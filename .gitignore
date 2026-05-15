@@ -216,3 +216,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Node / Cloudflare / render artifacts
+node_modules/
+.wrangler/
+.playwright-cli/
+examples/*/dist/
+examples/**/*.png

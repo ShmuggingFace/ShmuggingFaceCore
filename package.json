@@ -1,0 +1,31 @@
+{
+  "name": "@shmuggingface/core",
+  "version": "0.1.0",
+  "description": "Generate Cloudflare Pages review mocks for Hugging Face and Kaggle dataset releases.",
+  "type": "module",
+  "bin": {
+    "shmuggingface": "./bin/shmuggingface.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build:demo": "node bin/shmuggingface.mjs build --config examples/silly-datasets/shmuggingface.config.mjs --out examples/silly-datasets/dist",
+    "check": "node --check bin/shmuggingface.mjs && node --check src/generate.mjs && npm run build:demo && node --test"
+  },
+  "keywords": [
+    "dataset",
+    "mock",
+    "huggingface",
+    "kaggle",
+    "cloudflare-pages"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {}
+}

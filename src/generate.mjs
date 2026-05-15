@@ -184,15 +184,15 @@ function renderHf(model, dataset) {
     </div>
   </section>
   <nav class="hf-tabs">
-    <a class="active">▣ Dataset card</a>
-    <a>▦ Data Studio</a>
-    <a>☷ Files and versions <span>xet</span></a>
-    <a>🤗 Community <strong>${escapeHtml(dataset.discussions.length)}</strong></a>
-    <a>⚙ Settings</a>
+    <a class="active" href="#dataset-card">▣ Dataset card</a>
+    <a href="#data-studio">▦ Data Studio</a>
+    <a href="#files-and-versions">☷ Files and versions <span>xet</span></a>
+    <a href="#community">🤗 Community <strong>${escapeHtml(dataset.discussions.length)}</strong></a>
+    <a href="#settings">⚙ Settings</a>
   </nav>
   <section class="hf-main-grid">
     <article class="hf-content">
-      <section class="dataset-viewer">
+      <section class="dataset-viewer" id="data-studio">
         <header>
           <h2>▦ Dataset Viewer</h2>
           <div class="viewer-actions"><a>↻ Auto-converted to Parquet</a><button>&lt;/&gt; API</button><button>Embed</button><button>Duplicate</button><button>Data Studio</button></div>
@@ -213,11 +213,15 @@ function renderHf(model, dataset) {
         </div>
         <footer class="viewer-pagination"><span>‹ Previous</span><strong>1</strong><span>2</span><span>3</span><span>...</span><span>Next ›</span></footer>
       </section>
-      <section class="hf-card-markdown">
+      <section class="hf-card-markdown" id="dataset-card">
         <h2>Dataset Card for "${escapeHtml(dataset.title)}"</h2>
         <p>${escapeHtml(dataset.description)}</p>
         <h3>Mock release notes</h3>
         <p>${escapeHtml(dataset.subtitle)}</p>
+      </section>
+      <section class="hf-card-markdown" id="settings">
+        <h2>Settings</h2>
+        <p>This mock settings tab is intentionally read-only. It exists so reviewers can verify the expected Hugging Face navigation target without changing a real release.</p>
       </section>
     </article>
     <aside class="hf-sidebar">
@@ -231,11 +235,11 @@ function renderHf(model, dataset) {
         <div><dt>Number of rows:</dt><dd>${rowCount}</dd></div>
         <div><dt>Total file size:</dt><dd>${escapeHtml(dataset.files.map((file) => file.size).filter(Boolean).join(" + ") || "n/a")}</dd></div>
       </dl>
-      <section class="hf-side-section">
+      <section class="hf-side-section" id="files-and-versions">
         <h3>Files and versions</h3>
         <ul class="hf-files">${files(dataset)}</ul>
       </section>
-      <section class="hf-side-section">
+      <section class="hf-side-section" id="community">
         <h3>Community</h3>
         <ul class="hf-model-list">${dataset.discussions.map((item) => `<li><strong>${escapeHtml(item)}</strong><span>mock discussion · updated today</span></li>`).join("")}</ul>
       </section>

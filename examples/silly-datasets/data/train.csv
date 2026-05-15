@@ -1,0 +1,4 @@
+sock_id,pattern,dominant_color,pair_probability,split
+sock-0001,stripes,navy,0.98,train
+sock-0002,dots,yellow,0.73,train
+sock-0003,plain,black,0.91,train

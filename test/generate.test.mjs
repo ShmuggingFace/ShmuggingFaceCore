@@ -13,6 +13,9 @@ test("generateSite writes platform pages and mock notice", async () => {
     site: { title: "Review" },
     datasets: [{
       title: "Tiny Mock",
+      contactName: "Demo Reviewer",
+      contactEmail: "demo.reviewer@example.test",
+      rowCount: 1234,
       columns: ["id", "label"],
       rows: [{ id: "1", label: "demo" }],
       files: [{ path: "data/train.csv", size: "1 KB", sourcePath: "train.csv" }],
@@ -26,6 +29,14 @@ test("generateSite writes platform pages and mock notice", async () => {
   assert.match(html, /ShmuggingFace review mock/);
   assert.match(html, /Shmaggle/);
   assert.equal(await readFile(join(outDir, "downloads/tiny-mock/data/train.csv"), "utf8"), "id,label\n1,demo\n");
+  const hfHtml = await readFile(join(outDir, "hf/tiny-mock/index.html"), "utf8");
+  assert.match(hfHtml, /mailto:demo\.reviewer@example\.test/);
+  assert.match(hfHtml, /Demo Reviewer/);
+  assert.match(hfHtml, /1,234/);
+  assert.match(hfHtml, /data-sidebar-action="use"/);
+  assert.match(hfHtml, /Dask/);
+  assert.match(hfHtml, /data-sidebar-action="more"/);
+  assert.match(hfHtml, /Report repository/);
 });
 
 test("generateSite requires download backing for listed files", async () => {

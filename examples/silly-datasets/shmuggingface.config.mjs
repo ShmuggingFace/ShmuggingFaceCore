@@ -21,9 +21,9 @@ export default {
       kaggleMedals: "Socksilver",
       tags: ["tabular", "classification", "synthetic", "mock-release"],
       files: [
-        { path: "data/train.csv", size: "18 KB", kind: "CSV" },
-        { path: "data/test.csv", size: "7 KB", kind: "CSV" },
-        { path: "README.md", size: "5 KB", kind: "Dataset card" },
+        { path: "data/train.csv", size: "18 KB", kind: "CSV", sourcePath: "data/train.csv" },
+        { path: "data/test.csv", size: "7 KB", kind: "CSV", sourcePath: "data/test.csv" },
+        { path: "README.md", size: "5 KB", kind: "Dataset card", sourcePath: "README.dataset.md" },
       ],
       columns: ["sock_id", "pattern", "dominant_color", "pair_probability", "split"],
       rows: [
@@ -49,9 +49,16 @@ export default {
       kaggleMedals: "Porcelain",
       tags: ["images", "computer-vision", "synthetic", "mock-release"],
       files: [
-        { path: "images/sample_manifest.csv", size: "11 KB", kind: "CSV" },
-        { path: "images/thumbs.zip", size: "96 KB", kind: "ZIP" },
-        { path: "README.md", size: "4 KB", kind: "Dataset card" },
+        { path: "images/sample_manifest.csv", size: "11 KB", kind: "CSV", sourcePath: "images/sample_manifest.csv" },
+        {
+          path: "images/thumbs.zip",
+          size: "1.4 GB",
+          kind: "ZIP",
+          storage: "Git LFS",
+          downloadUrl: "https://github.com/ShmuggingFace/silly-dataset-release-demo/raw/main/large-files/thumbs.zip",
+          downloadLabel: "Open Git LFS",
+        },
+        { path: "README.md", size: "4 KB", kind: "Dataset card", sourcePath: "README.dataset.md" },
       ],
       columns: ["image_id", "pose", "background", "handle_visible", "split"],
       rows: [

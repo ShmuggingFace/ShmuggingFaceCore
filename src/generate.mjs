@@ -1,4 +1,4 @@
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 const MOCK_NOTICE =
@@ -154,7 +154,12 @@ function table(dataset) {
 
 function files(dataset) {
   return dataset.files
-    .map((file) => `<li><span>${escapeHtml(file.path)}</span><strong>${escapeHtml(file.size || "")}</strong><em>${escapeHtml(file.kind || "file")}</em><a href="/downloads/${dataset.slug}/${encodeURIComponent(file.path.split("/").pop())}.txt">Download mock</a></li>`)
+    .map((file) => {
+      const href = file.downloadUrl || `/downloads/${dataset.slug}/${file.path.split("/").map(encodeURIComponent).join("/")}`;
+      const label = file.downloadLabel || (file.downloadUrl ? `Open ${file.storage || "storage"}` : "Download");
+      const download = file.downloadUrl ? "" : " download";
+      return `<li><span>${escapeHtml(file.path)}</span><strong>${escapeHtml(file.size || "")}</strong><em>${escapeHtml(file.kind || "file")}</em><a href="${escapeHtml(href)}"${download}>${escapeHtml(label)}</a></li>`;
+    })
     .join("");
 }
 
@@ -295,6 +300,21 @@ async function write(outDir, path, contents, files) {
   files.push(path);
 }
 
+async function copyDownload(outDir, dataset, file, options, files) {
+  if (file.downloadUrl) {
+    return;
+  }
+  if (!file.sourcePath) {
+    throw new Error(`File ${dataset.slug}:${file.path} must define sourcePath or downloadUrl`);
+  }
+  const source = resolve(options.configDir || process.cwd(), file.sourcePath);
+  const targetPath = `downloads/${dataset.slug}/${file.path}`;
+  const target = join(outDir, targetPath);
+  await mkdir(resolve(target, ".."), { recursive: true });
+  await copyFile(source, target);
+  files.push(targetPath);
+}
+
 export async function generateSite(config, options = {}) {
   const model = normalizeConfig(config);
   const outDir = resolve(options.outDir || "dist");
@@ -308,8 +328,7 @@ export async function generateSite(config, options = {}) {
     await write(outDir, `hf/${dataset.slug}/index.html`, renderHf(model, dataset), files);
     await write(outDir, `kaggle/${dataset.slug}/index.html`, renderKaggle(model, dataset), files);
     for (const file of dataset.files) {
-      const name = encodeURIComponent(file.path.split("/").pop());
-      await write(outDir, `downloads/${dataset.slug}/${name}.txt`, `${MOCK_NOTICE}\n\nMock download for ${dataset.title}: ${file.path}\n`, files);
+      await copyDownload(outDir, dataset, file, options, files);
     }
   }
   return { outDir, files };

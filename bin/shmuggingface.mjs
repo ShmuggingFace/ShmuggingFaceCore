@@ -41,7 +41,7 @@ async function main() {
   if (!config) {
     throw new Error(`Config ${configPath} must export default or named config`);
   }
-  const result = await generateSite(config, { outDir });
+  const result = await generateSite(config, { outDir, configDir: resolve(configPath, "..") });
   console.log(`Generated ${result.files.length} files in ${result.outDir}`);
 }
 

@@ -44,7 +44,7 @@ export default {
     license: "CC-BY-4.0 mock",
     task: "tabular-classification",
     tags: ["tabular", "synthetic", "mock-release"],
-    files: [{ path: "data/train.csv", size: "18 KB", kind: "CSV" }],
+    files: [{ path: "data/train.csv", size: "18 KB", kind: "CSV", sourcePath: "data/train.csv" }],
     columns: ["sock_id", "pattern", "pair_probability"],
     rows: [{ sock_id: "sock-0001", pattern: "stripes", pair_probability: "0.98" }],
   }],
@@ -75,6 +75,33 @@ Closed review links should be protected with Cloudflare Access at the Pages
 hostname. This repository intentionally does not store Access policies, reviewer
 emails, Cloudflare tokens, or provider payloads. Use provider-managed secrets in
 GitHub Actions and local Wrangler auth for deployment.
+
+## Download Backing
+
+Every file listed in a dataset must have real backing:
+
+- Use `sourcePath` for small files that should be copied into the generated
+  static site. Paths are resolved relative to `shmuggingface.config.mjs`.
+- Use `downloadUrl` for large files or externally stored files, such as Git LFS,
+  S3/R2, GCS, Azure Blob, or a signed release asset.
+- Optional `storage` and `downloadLabel` fields control how external links are
+  described in the UI.
+
+Example:
+
+```js
+files: [
+  { path: "data/train.csv", size: "18 KB", kind: "CSV", sourcePath: "data/train.csv" },
+  {
+    path: "data/full.parquet",
+    size: "8 GB",
+    kind: "Parquet",
+    storage: "Git LFS",
+    downloadUrl: "https://github.com/org/repo/raw/main/data/full.parquet",
+    downloadLabel: "Open Git LFS",
+  },
+]
+```
 
 ## GitHub Actions
 

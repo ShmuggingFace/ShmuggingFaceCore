@@ -22,6 +22,11 @@ Every generated page includes a prominent mock notice:
 
 ## Quick Start
 
+Reference consumer demo:
+[`ShmuggingFace/silly-dataset-release-demo`](https://github.com/ShmuggingFace/silly-dataset-release-demo)
+deploys to
+<https://shmuggingface-silly-dataset-demo.pages.dev/>.
+
 Create `shmuggingface.config.mjs` in a dataset-producing project:
 
 ```js

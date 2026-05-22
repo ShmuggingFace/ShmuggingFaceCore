@@ -40,6 +40,7 @@ test("generateSite writes platform pages and mock notice", async () => {
   assert.match(hfHtml, /Dask/);
   assert.match(hfHtml, /data-sidebar-action="more"/);
   assert.match(hfHtml, /Report repository/);
+  assert.doesNotMatch(hfHtml, /Settings/);
   const studioHtml = await readFile(join(outDir, "hf/tiny-mock/data-studio/index.html"), "utf8");
   assert.match(studioHtml, /data-studio="tiny-mock"/);
   assert.match(studioHtml, /Data Studio/);

@@ -307,7 +307,6 @@ function hfTabs(dataset, active = "card") {
     ${tab("studio", `${base}data-studio/`, "▦ Data Studio")}
     ${tab("files", `${base}files-and-versions/`, "☷ Files and versions <span>xet</span>")}
     ${tab("community", `${base}community/`, `🤗 Community <strong>${escapeHtml(dataset.discussions.length)}</strong>`)}
-    ${tab("settings", `${base}#settings`, "⚙ Settings")}
   </nav>`;
 }
 
@@ -643,10 +642,6 @@ function renderHf(model, dataset) {
         <p>${escapeHtml(dataset.description)}</p>
         <h3>Mock release notes</h3>
         <p>${escapeHtml(dataset.subtitle)}</p>
-      </section>
-      <section class="hf-card-markdown" id="settings">
-        <h2>Settings</h2>
-        <p>This mock settings tab is intentionally read-only. It exists so reviewers can verify the expected Hugging Face navigation target without changing a real release.</p>
       </section>
     </article>
     <aside class="hf-sidebar">

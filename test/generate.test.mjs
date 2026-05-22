@@ -25,6 +25,7 @@ test("generateSite writes platform pages and mock notice", async () => {
   assert.ok(result.files.includes("hf/tiny-mock/index.html"));
   assert.ok(result.files.includes("hf/tiny-mock/data-studio/index.html"));
   assert.ok(result.files.includes("hf/tiny-mock/files-and-versions/index.html"));
+  assert.ok(result.files.includes("hf/tiny-mock/community/index.html"));
   assert.ok(result.files.includes("kaggle/tiny-mock/index.html"));
   assert.ok(result.files.includes("downloads/tiny-mock/data/train.csv"));
   const html = await readFile(join(outDir, "index.html"), "utf8");
@@ -51,6 +52,12 @@ test("generateSite writes platform pages and mock notice", async () => {
   assert.match(filesHtml, /data\/train\.csv/);
   assert.match(filesHtml, /downloads\/tiny-mock\/data\/train\.csv/);
   assert.match(filesHtml, /Contribute/);
+  const communityHtml = await readFile(join(outDir, "hf/tiny-mock/community/index.html"), "utf8");
+  assert.match(communityHtml, /data-community-page="tiny-mock"/);
+  assert.match(communityHtml, /New discussion/);
+  assert.match(communityHtml, /Pull requests/);
+  assert.match(communityHtml, /Filter by title/);
+  assert.match(communityHtml, /How should reviewers interpret the mock row preview/);
 });
 
 test("generateSite requires download backing for listed files", async () => {

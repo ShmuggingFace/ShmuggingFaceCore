@@ -23,6 +23,7 @@ test("generateSite writes platform pages and mock notice", async () => {
   }, { outDir, configDir: sourceDir });
 
   assert.ok(result.files.includes("hf/tiny-mock/index.html"));
+  assert.ok(result.files.includes("hf/tiny-mock/data-studio/index.html"));
   assert.ok(result.files.includes("kaggle/tiny-mock/index.html"));
   assert.ok(result.files.includes("downloads/tiny-mock/data/train.csv"));
   const html = await readFile(join(outDir, "index.html"), "utf8");
@@ -37,6 +38,12 @@ test("generateSite writes platform pages and mock notice", async () => {
   assert.match(hfHtml, /Dask/);
   assert.match(hfHtml, /data-sidebar-action="more"/);
   assert.match(hfHtml, /Report repository/);
+  const studioHtml = await readFile(join(outDir, "hf/tiny-mock/data-studio/index.html"), "utf8");
+  assert.match(studioHtml, /data-studio="tiny-mock"/);
+  assert.match(studioHtml, /Data Studio/);
+  assert.match(studioHtml, /DATA STUDIO|Get Started|data-studio-split/i);
+  assert.match(studioHtml, /data-studio-tab="sql"/);
+  assert.match(studioHtml, /Select a subset\/split to load the data/);
 });
 
 test("generateSite requires download backing for listed files", async () => {

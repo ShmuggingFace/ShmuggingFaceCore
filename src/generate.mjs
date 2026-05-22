@@ -229,7 +229,7 @@ function viewerScript(dataset) {
     setStatus('Mock duplicate created for review.');
   });
   viewer.querySelector('[data-action="studio"]')?.addEventListener('click', () => {
-    location.hash = 'data-studio';
+    location.href = '/hf/${slug}/data-studio/';
     setStatus('Data Studio view selected.');
   });
   viewer.querySelector('[data-action="parquet"]')?.addEventListener('click', (event) => {
@@ -265,6 +265,99 @@ function viewerScript(dataset) {
   });
   viewer.querySelector('[data-page-prev]')?.addEventListener('click', () => setPage((Number(viewer.dataset.page) || 1) - 1));
   viewer.querySelector('[data-page-next]')?.addEventListener('click', () => setPage((Number(viewer.dataset.page) || 1) + 1));
+})();
+</script>`;
+}
+
+function hfTabs(dataset, active = "card") {
+  const base = `/hf/${dataset.slug}/`;
+  const tab = (id, href, label) => `<a class="${active === id ? "active" : ""}" href="${href}">${label}</a>`;
+  return `<nav class="hf-tabs">
+    ${tab("card", `${base}#dataset-card`, "▣ Dataset card")}
+    ${tab("studio", `${base}data-studio/`, "▦ Data Studio")}
+    ${tab("files", `${base}#files-and-versions`, "☷ Files and versions <span>xet</span>")}
+    ${tab("community", `${base}#community`, `🤗 Community <strong>${escapeHtml(dataset.discussions.length)}</strong>`)}
+    ${tab("settings", `${base}#settings`, "⚙ Settings")}
+  </nav>`;
+}
+
+function viewerShell(dataset, { studio = false } = {}) {
+  const rowCount = Math.max(dataset.rowCount, dataset.rows.length, 1);
+  const firstColumn = escapeHtml(dataset.columns[0] || "text");
+  return `<section class="dataset-viewer ${studio ? "studio-dataset-viewer" : ""}" id="data-studio" data-viewer="${escapeHtml(dataset.slug)}">
+    <header>
+      <h2>▦ Dataset Viewer</h2>
+      ${studio ? '<div class="studio-panel-actions"><button type="button">▯</button><button type="button">⋮</button></div>' : '<div class="viewer-actions"><a href="#parquet-details" data-action="parquet">↻ Auto-converted to Parquet</a><button type="button" data-action="api">&lt;/&gt; API</button><button type="button" data-action="embed">Embed</button><button type="button" data-action="duplicate">Duplicate</button><button type="button" data-action="studio">Data Studio</button></div>'}
+    </header>
+    <div class="viewer-splits">
+      <button type="button" data-menu-button="subset" aria-expanded="false"><span>Subset (${dataset.files.length})</span><strong>${escapeHtml(dataset.slug)} · ${formatNumber(rowCount)} rows</strong><em>⌄</em></button>
+      <button type="button" data-menu-button="split" aria-expanded="false"><span>Split (3)</span><strong>train · ${formatNumber(rowCount)} rows</strong><em>⌄</em></button>
+    </div>
+    <div class="viewer-menu-row">
+      <div class="viewer-menu" data-menu="subset" hidden><button type="button">${escapeHtml(dataset.slug)}</button><button type="button">default</button><button type="button">review-sample</button></div>
+      <div class="viewer-menu" data-menu="split" hidden><button type="button">train</button><button type="button">validation</button><button type="button">test</button></div>
+    </div>
+    <label class="viewer-search"><span>⌕</span><input data-viewer-search placeholder="Search this dataset"></label>
+    ${studio ? "" : `<div class="viewer-panels">
+      <div class="viewer-panel" id="parquet-details" data-parquet-panel hidden>Auto-converted preview files are shown as Parquet-style review rows. Original files remain available in Files and versions.</div>
+      <div class="viewer-panel" data-api-panel hidden><code>from datasets import load_dataset<br>dataset = load_dataset("${escapeHtml(dataset.owner)}/${escapeHtml(dataset.slug)}")</code></div>
+      <div class="viewer-panel" data-embed-panel hidden><code>&lt;iframe src="/hf/${escapeHtml(dataset.slug)}/#data-studio"&gt;&lt;/iframe&gt;</code></div>
+    </div>`}
+    <div class="viewer-column-profile">
+      <strong>${firstColumn}</strong>
+      <span>string · lengths</span>
+      <div class="mini-histogram"><i style="height:38px"></i><i style="height:8px"></i><i style="height:4px"></i><i style="height:3px"></i><i style="height:2px"></i></div>
+      <small>0 <b>7.07k</b></small>
+    </div>
+    <div class="hf-row-preview">
+      ${viewerRows(dataset)}
+    </div>
+    <footer class="viewer-pagination"><button type="button" data-page-prev>‹ Previous</button><button type="button" data-page-button="1" class="active" aria-current="page">1</button><button type="button" data-page-button="2">2</button><button type="button" data-page-button="3">3</button><span>...</span><button type="button" data-page-next>Next ›</button></footer>
+    <p class="viewer-status" data-viewer-status aria-live="polite">Showing preview page 1 for ${escapeHtml(dataset.slug)}.</p>
+  </section>`;
+}
+
+function renderHfCompactHeader(dataset, active = "studio") {
+  return `<section class="hf-compact-header">
+    <div class="hf-title-row">
+      <h1><span class="hf-muted-icon">▣</span><span>Datasets:</span> <a>${escapeHtml(dataset.owner)}</a>/<strong>${escapeHtml(dataset.slug)}</strong><button class="copy-button">□</button></h1>
+      <button class="small-button">♡ like</button><span class="count-pill">${escapeHtml(dataset.likes)}</span>
+      <button class="small-button">Follow ${escapeHtml(dataset.owner)}</button>
+    </div>
+    ${hfTabs(dataset, active)}
+  </section>`;
+}
+
+function dataStudioScript(dataset) {
+  const slug = escapeHtml(dataset.slug);
+  return `<script>
+(() => {
+  const studio = document.querySelector('[data-studio="${slug}"]');
+  if (!studio) return;
+  const prompt = studio.querySelector('[data-studio-prompt]');
+  const empty = studio.querySelector('[data-studio-empty]');
+  studio.querySelectorAll('[data-studio-tab]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const target = button.dataset.studioTab;
+      studio.querySelectorAll('[data-studio-tab]').forEach((tab) => tab.classList.toggle('active', tab.dataset.studioTab === target));
+      studio.querySelectorAll('[data-studio-panel]').forEach((panel) => {
+        panel.hidden = panel.dataset.studioPanel !== target;
+      });
+    });
+  });
+  studio.querySelectorAll('[data-studio-split]').forEach((button) => {
+    button.addEventListener('click', () => {
+      studio.querySelectorAll('[data-studio-split]').forEach((pill) => pill.classList.toggle('active', pill === button));
+      if (prompt) {
+        prompt.disabled = false;
+        prompt.placeholder = 'Ask about ' + button.textContent.trim();
+      }
+      if (empty) empty.textContent = 'Agent ready for ' + button.textContent.trim() + '.';
+    });
+  });
+  studio.querySelector('[data-studio-send]')?.addEventListener('click', () => {
+    if (empty) empty.textContent = prompt?.value ? 'Mock answer drafted for: ' + prompt.value : 'Select a subset/split or type a question to start.';
+  });
 })();
 </script>`;
 }
@@ -347,46 +440,10 @@ function renderHf(model, dataset) {
       ${dataset.tags.map((tag) => `<div class="meta-line"><span>Tag:</span><a>${escapeHtml(tag)}</a></div>`).join("")}
     </div>
   </section>
-  <nav class="hf-tabs">
-    <a class="active" href="#dataset-card">▣ Dataset card</a>
-    <a href="#data-studio">▦ Data Studio</a>
-    <a href="#files-and-versions">☷ Files and versions <span>xet</span></a>
-    <a href="#community">🤗 Community <strong>${escapeHtml(dataset.discussions.length)}</strong></a>
-    <a href="#settings">⚙ Settings</a>
-  </nav>
+  ${hfTabs(dataset, "card")}
   <section class="hf-main-grid">
     <article class="hf-content">
-      <section class="dataset-viewer" id="data-studio" data-viewer="${escapeHtml(dataset.slug)}">
-        <header>
-          <h2>▦ Dataset Viewer</h2>
-          <div class="viewer-actions"><a href="#parquet-details" data-action="parquet">↻ Auto-converted to Parquet</a><button type="button" data-action="api">&lt;/&gt; API</button><button type="button" data-action="embed">Embed</button><button type="button" data-action="duplicate">Duplicate</button><button type="button" data-action="studio">Data Studio</button></div>
-        </header>
-        <div class="viewer-splits">
-          <button type="button" data-menu-button="subset" aria-expanded="false"><span>Subset (${dataset.files.length})</span><strong>${escapeHtml(dataset.slug)} · ${rowCount} rows</strong><em>⌄</em></button>
-          <button type="button" data-menu-button="split" aria-expanded="false"><span>Split (3)</span><strong>train · ${rowCount} rows</strong><em>⌄</em></button>
-        </div>
-        <div class="viewer-menu-row">
-          <div class="viewer-menu" data-menu="subset" hidden><button type="button">${escapeHtml(dataset.slug)}</button><button type="button">default</button><button type="button">review-sample</button></div>
-          <div class="viewer-menu" data-menu="split" hidden><button type="button">train</button><button type="button">validation</button><button type="button">test</button></div>
-        </div>
-        <label class="viewer-search"><span>⌕</span><input data-viewer-search placeholder="Search this dataset"></label>
-        <div class="viewer-panels">
-          <div class="viewer-panel" id="parquet-details" data-parquet-panel hidden>Auto-converted preview files are shown as Parquet-style review rows. Original files remain available in Files and versions.</div>
-          <div class="viewer-panel" data-api-panel hidden><code>from datasets import load_dataset<br>dataset = load_dataset("${escapeHtml(dataset.owner)}/${escapeHtml(dataset.slug)}")</code></div>
-          <div class="viewer-panel" data-embed-panel hidden><code>&lt;iframe src="/hf/${escapeHtml(dataset.slug)}/#data-studio"&gt;&lt;/iframe&gt;</code></div>
-        </div>
-        <div class="viewer-column-profile">
-          <strong>${firstColumn}</strong>
-          <span>string · lengths</span>
-          <div class="mini-histogram"><i style="height:38px"></i><i style="height:8px"></i><i style="height:4px"></i><i style="height:3px"></i><i style="height:2px"></i></div>
-          <small>0 <b>7.07k</b></small>
-        </div>
-        <div class="hf-row-preview">
-          ${viewerRows(dataset)}
-        </div>
-        <footer class="viewer-pagination"><button type="button" data-page-prev>‹ Previous</button><button type="button" data-page-button="1" class="active" aria-current="page">1</button><button type="button" data-page-button="2">2</button><button type="button" data-page-button="3">3</button><span>...</span><button type="button" data-page-next>Next ›</button></footer>
-        <p class="viewer-status" data-viewer-status aria-live="polite">Showing preview page 1 for ${escapeHtml(dataset.slug)}.</p>
-      </section>
+      ${viewerShell(dataset)}
       ${viewerScript(dataset)}
       <section class="hf-card-markdown" id="dataset-card">
         <h2>Dataset Card for "${escapeHtml(dataset.title)}"</h2>
@@ -441,6 +498,54 @@ function renderHf(model, dataset) {
   return layout({ title: `${dataset.title} | ShmuggingFace`, body, site: model.site });
 }
 
+function renderHfDataStudio(model, dataset) {
+  const rowCount = Math.max(dataset.rowCount, dataset.rows.length, 1);
+  const splits = [
+    [`${dataset.slug}/train`, formatNumber(rowCount)],
+    [`${dataset.slug}/validation`, formatNumber(Math.max(1, Math.round(rowCount * 0.1)))],
+    [`${dataset.slug}/test`, formatNumber(Math.max(1, Math.round(rowCount * 0.1)))],
+    [`${dataset.slug}/review-sample`, formatNumber(Math.max(1, dataset.rows.length))],
+  ];
+  const body = `${renderHfCompactHeader(dataset, "studio")}
+  <section class="data-studio-layout" data-studio="${escapeHtml(dataset.slug)}">
+    <div class="studio-viewer-column">
+      ${viewerShell(dataset, { studio: true })}
+      ${viewerScript(dataset)}
+    </div>
+    <aside class="studio-agent-column">
+      <div class="studio-agent-tabs">
+        <button type="button" data-studio-tab="agent" class="active">Agent</button>
+        <button type="button" data-studio-tab="sql"><span>SQL</span></button>
+        <button type="button" data-studio-tab="console">Console</button>
+      </div>
+      <div class="studio-agent-body" data-studio-panel="agent">
+        <div class="studio-agent-empty" data-studio-empty>
+          <span class="studio-agent-icon">▣</span>
+          <strong>Get Started</strong>
+          <p>Select a subset/split to load the data and start chatting.</p>
+          <div class="studio-split-pills">
+            ${splits.map(([label, count]) => `<button type="button" data-studio-split>${escapeHtml(label)} · ${escapeHtml(count)}</button>`).join("")}
+            <button type="button" class="more-splits" data-studio-split>+8 more⌄</button>
+          </div>
+        </div>
+      </div>
+      <div class="studio-agent-body" data-studio-panel="sql" hidden>
+        <pre><code>SELECT pattern, dominant_color, AVG(pair_probability)\nFROM ${escapeHtml(dataset.slug)}\nGROUP BY 1, 2\nORDER BY 3 DESC;</code></pre>
+      </div>
+      <div class="studio-agent-body" data-studio-panel="console" hidden>
+        <pre><code>Connected to ${escapeHtml(dataset.slug)} mock Data Studio.\nNo real queries are sent from this review mock.</code></pre>
+      </div>
+      <div class="studio-chatbar">
+        <input data-studio-prompt disabled placeholder="Select a subset/split to get started.">
+        <span>gpt-oss-120b</span>
+        <button type="button" data-studio-send>↑</button>
+      </div>
+    </aside>
+  </section>
+  ${dataStudioScript(dataset)}`;
+  return layout({ title: `${dataset.title} Data Studio | ShmuggingFace`, body, site: model.site });
+}
+
 function renderKaggle(model, dataset) {
   const nav = datasetSelect(model.datasets, dataset.slug, "kaggle");
   const body = `<section class="repo-header kaggle">
@@ -477,7 +582,7 @@ function styles() {
 
 function hfSpecificStyles() {
   return `
-body{background:#fff;color:#111827}.mock-ribbon{background:#111827;color:#fff;padding:7px 16px;font-size:14px;font-weight:700}.hf-topbar{position:sticky;top:0;height:56px;padding:0 6%;gap:14px;justify-content:flex-start;flex-wrap:nowrap;border-bottom:1px solid #e5e7eb;box-shadow:0 1px 4px rgba(15,23,42,.05)}.brand{font-size:20px;color:#111827;white-space:nowrap}.brand-mark{font-size:28px}.global-search{width:min(420px,32vw);height:40px;border:1px solid #d8dee8;border-radius:9px;display:flex;align-items:center;gap:8px;padding:0 12px;color:#9aa3b2;background:#fff}.global-search input{border:0;outline:0;width:100%;font:inherit;font-size:15px;color:#111827}.global-search input::placeholder{color:#8b95a5}.global-nav{margin-left:auto;gap:14px;flex-wrap:nowrap}.global-nav a{font-weight:650;color:#111827;font-size:14px;white-space:nowrap}.global-nav strong{font-size:10px;color:#2563eb;background:#dbeafe;border-radius:4px;padding:2px 4px}.global-nav .avatar{width:30px;height:30px;border-radius:999px;display:grid;place-items:center;border:1px solid #d8dee8;padding:0;flex:0 0 auto}main{max-width:none;padding:0}.hf-repo-hero{padding:54px 6% 34px;background:#fff;border-bottom:1px solid #eef0f4}.hf-title-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.hf-title-row h1{margin:0 12px 0 0;font-size:26px;line-height:1.25;font-weight:750;letter-spacing:0;display:flex;align-items:center;gap:8px}.hf-title-row h1 span{color:#98a1b2;font-weight:750}.hf-title-row h1 a{color:#374151;text-decoration:none;font-weight:450}.hf-title-row h1 strong{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:27px}.hf-muted-icon{font-size:17px;color:#c6ccd7}.copy-button{border:0;background:transparent;color:#6b7280;font-size:16px}.small-button,.count-pill{border:1px solid #d8dee8;background:#fff;border-radius:7px;padding:7px 10px;font:inherit;font-size:14px;color:#536073}.count-pill{background:#f8fafc}.hf-meta-grid{display:flex;gap:14px 20px;flex-wrap:wrap;margin-top:18px;max-width:1420px}.meta-line{display:flex;align-items:center;gap:8px;color:#98a1b2}.meta-line span{font-size:14px}.meta-line a{display:inline-flex;align-items:center;min-height:34px;padding:6px 12px;border:1px solid #e3e7ee;border-radius:9px;background:#fff;color:#374151;text-decoration:none;box-shadow:0 4px 12px rgba(15,23,42,.04);font-size:14px}.hf-tabs{height:58px;padding:0 6%;display:flex;align-items:end;gap:22px;border-bottom:1px solid #e5e7eb;background:#fff;overflow:auto}.hf-tabs a{height:100%;display:flex;align-items:center;gap:7px;color:#4b5563;text-decoration:none;font-size:17px;font-weight:520;white-space:nowrap;border-bottom:3px solid transparent}.hf-tabs a.active{color:#111827;font-weight:760;border-bottom-color:#111827}.hf-tabs span{font-size:11px;border:1px solid #e5e7eb;border-radius:7px;padding:1px 5px;color:#4f46e5}.hf-tabs strong{font-size:12px;color:#fff;background:#111827;border-radius:6px;padding:1px 5px}.hf-main-grid{display:grid;grid-template-columns:minmax(0,1fr) 530px;gap:0;max-width:1800px;margin:0 auto}.hf-content{border:0;border-radius:0;padding:32px 32px 56px 6%;background:#fff}.hf-sidebar{border:0;border-left:1px solid #e5e7eb;border-radius:0;padding:32px 6% 56px 32px;background:#fff}.dataset-viewer{border:1px solid #d8dee8;border-radius:10px;box-shadow:0 2px 8px rgba(15,23,42,.06);overflow:hidden;background:#fff}.dataset-viewer header{height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;border-bottom:1px solid #e5e7eb;gap:12px}.dataset-viewer h2{margin:0;font-size:18px;white-space:nowrap}.viewer-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}.viewer-actions a{color:#8b95a5;font-size:13px}.viewer-actions button,.sidebar-actions button{border:1px solid #d8dee8;background:#f8fafc;border-radius:7px;padding:7px 10px;font:inherit;font-size:13px;color:#374151}.viewer-splits{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid #e5e7eb}.viewer-splits button{min-height:72px;border:0;border-right:1px solid #e5e7eb;background:#fff;text-align:left;padding:12px 16px;display:grid;grid-template-columns:1fr auto;gap:4px 10px;font:inherit}.viewer-splits button:last-child{border-right:0}.viewer-splits span{grid-column:1/-1;color:#687386;font-size:14px}.viewer-splits strong{font-size:15px}.viewer-splits em{font-style:normal;font-size:22px;align-self:center}.viewer-menu-row{display:grid;grid-template-columns:1fr 1fr;background:#fbfcfe;border-bottom:1px solid #e5e7eb}.viewer-menu{padding:10px 16px;display:flex;gap:8px;flex-wrap:wrap}.viewer-menu+ .viewer-menu{border-left:1px solid #e5e7eb}.viewer-menu button{border:1px solid #d8dee8;border-radius:999px;background:#fff;padding:6px 10px;font:inherit;font-size:13px}.viewer-search{height:48px;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;gap:10px;padding:0 16px;color:#98a1b2}.viewer-search input{border:0;outline:0;width:100%;font:inherit;font-size:16px}.viewer-panels{border-bottom:1px solid #e5e7eb}.viewer-panel{padding:12px 16px;background:#f8fafc;color:#374151;font-size:13px}.viewer-panel code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}.viewer-column-profile{padding:14px 16px;border-bottom:1px solid #e5e7eb;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}.viewer-column-profile strong{display:block;font-size:15px}.viewer-column-profile span{color:#7b8494;font-size:14px;font-style:italic}.mini-histogram{height:42px;display:flex;align-items:end;gap:4px;margin-top:8px}.mini-histogram i{display:block;width:14px;background:#98a1b2;border-radius:2px 2px 0 0}.viewer-column-profile small{display:flex;width:176px;justify-content:space-between;color:#8b95a5}.hf-row-preview{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:15px;color:#1f2937}.preview-row{padding:14px 16px;border-bottom:1px solid #e5e7eb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.preview-heading{background:#fbfcfe}.viewer-pagination{height:50px;display:flex;align-items:center;justify-content:center;gap:18px;color:#6b7280;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;border-top:1px solid #e5e7eb}.viewer-pagination button{border:0;background:transparent;color:#6b7280;font:inherit;cursor:pointer}.viewer-pagination button.active{border:1px solid #d8dee8;border-radius:10px;padding:6px 12px;color:#111827;background:#fff}.viewer-status{margin:0;padding:8px 16px;border-top:1px solid #e5e7eb;color:#687386;font-size:13px}.hf-card-markdown{margin-top:54px}.hf-card-markdown h2{font-size:24px;color:#263244}.hf-card-markdown p{font-size:16px;line-height:1.6;color:#374151}.sidebar-action-shell{position:relative;border-bottom:1px solid #eef0f4;padding-bottom:26px}.sidebar-actions{display:flex;gap:10px}.sidebar-actions .primary-action{background:#030712;color:#fff;border-color:#030712;min-width:210px;font-weight:700}.sidebar-popover{position:absolute;right:0;top:58px;z-index:4;width:min(460px,100%);border:1px solid #d8dee8;border-radius:10px;background:#fff;box-shadow:0 18px 40px rgba(15,23,42,.18);padding:16px}.sidebar-popover strong{display:block;font-size:17px;margin-bottom:12px}.code-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}.code-tabs button{border:1px solid #d8dee8;border-radius:7px;background:#fff;padding:7px 10px;font:inherit;font-size:13px}.code-tabs button.active{background:#111827;color:#fff;border-color:#111827}.sidebar-popover pre{margin:0;border:1px solid #e5e7eb;border-radius:8px;background:#f8fafc;padding:12px;overflow:auto}.sidebar-popover code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:13px;white-space:pre}.locked-popover{background:repeating-linear-gradient(135deg,#fff,#fff 12px,#f8fafc 12px,#f8fafc 24px)}.locked-popover p{margin:0;color:#687386;line-height:1.45}.more-popover{width:260px;display:grid;gap:8px}.more-popover button{border:1px solid #e5e7eb;border-radius:7px;background:#f3f4f6;color:#9aa3b2;padding:9px 10px;text-align:left;font:inherit;text-decoration:line-through;cursor:not-allowed}.downloads-row{height:88px;border-bottom:1px solid #eef0f4;display:flex;align-items:center;justify-content:space-between;gap:20px}.downloads-row span{color:#667085;font-size:15px}.downloads-row span:after{content:"";display:inline-block;width:150px;border-bottom:1px dotted #d8dee8;margin-left:16px;vertical-align:middle}.downloads-row strong{font-size:19px}.hf-info-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;border-bottom:1px solid #eef0f4;padding:26px 0 28px}.hf-info-grid div{border:1px solid #e5e7eb;border-radius:9px;padding:10px 12px}.hf-info-grid dt{font-size:13px;color:#98a1b2;font-weight:650}.hf-info-grid dd{font-size:14px;color:#111827;margin-top:4px}.hf-info-grid a{color:#111827;text-decoration:none}.hf-info-grid a:hover{text-decoration:underline}.hf-side-section{border-bottom:1px solid #eef0f4;padding:24px 0}.hf-side-section h3{font-size:18px;margin:0 0 14px;color:#1f2937}.hf-files{list-style:none;margin:0;padding:0;display:grid;gap:10px}.hf-files li{border:1px solid #e5e7eb;border-radius:10px;padding:11px 12px;display:grid;grid-template-columns:1fr auto;gap:5px 10px}.hf-files span{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-weight:700}.hf-files strong,.hf-files em,.hf-files a{font-size:13px;color:#8b95a5}.hf-model-list{list-style:none;margin:0;padding:0;display:grid;gap:12px}.hf-model-list li{border:1px solid #e5e7eb;border-radius:10px;padding:12px;box-shadow:0 1px 4px rgba(15,23,42,.04)}.hf-model-list strong{display:block;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.hf-model-list span{display:block;color:#98a1b2;font-size:13px;margin-top:5px}[hidden]{display:none!important}
+body{background:#fff;color:#111827}.mock-ribbon{background:#111827;color:#fff;padding:7px 16px;font-size:14px;font-weight:700}.hf-topbar{position:sticky;top:0;height:56px;padding:0 6%;gap:14px;justify-content:flex-start;flex-wrap:nowrap;border-bottom:1px solid #e5e7eb;box-shadow:0 1px 4px rgba(15,23,42,.05)}.brand{font-size:20px;color:#111827;white-space:nowrap}.brand-mark{font-size:28px}.global-search{width:min(420px,32vw);height:40px;border:1px solid #d8dee8;border-radius:9px;display:flex;align-items:center;gap:8px;padding:0 12px;color:#9aa3b2;background:#fff}.global-search input{border:0;outline:0;width:100%;font:inherit;font-size:15px;color:#111827}.global-search input::placeholder{color:#8b95a5}.global-nav{margin-left:auto;gap:14px;flex-wrap:nowrap}.global-nav a{font-weight:650;color:#111827;font-size:14px;white-space:nowrap}.global-nav strong{font-size:10px;color:#2563eb;background:#dbeafe;border-radius:4px;padding:2px 4px}.global-nav .avatar{width:30px;height:30px;border-radius:999px;display:grid;place-items:center;border:1px solid #d8dee8;padding:0;flex:0 0 auto}main{max-width:none;padding:0}.hf-repo-hero{padding:54px 6% 34px;background:#fff;border-bottom:1px solid #eef0f4}.hf-title-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.hf-title-row h1{margin:0 12px 0 0;font-size:26px;line-height:1.25;font-weight:750;letter-spacing:0;display:flex;align-items:center;gap:8px}.hf-title-row h1 span{color:#98a1b2;font-weight:750}.hf-title-row h1 a{color:#374151;text-decoration:none;font-weight:450}.hf-title-row h1 strong{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:27px}.hf-muted-icon{font-size:17px;color:#c6ccd7}.copy-button{border:0;background:transparent;color:#6b7280;font-size:16px}.small-button,.count-pill{border:1px solid #d8dee8;background:#fff;border-radius:7px;padding:7px 10px;font:inherit;font-size:14px;color:#536073}.count-pill{background:#f8fafc}.hf-meta-grid{display:flex;gap:14px 20px;flex-wrap:wrap;margin-top:18px;max-width:1420px}.meta-line{display:flex;align-items:center;gap:8px;color:#98a1b2}.meta-line span{font-size:14px}.meta-line a{display:inline-flex;align-items:center;min-height:34px;padding:6px 12px;border:1px solid #e3e7ee;border-radius:9px;background:#fff;color:#374151;text-decoration:none;box-shadow:0 4px 12px rgba(15,23,42,.04);font-size:14px}.hf-tabs{height:58px;padding:0 6%;display:flex;align-items:end;gap:22px;border-bottom:1px solid #e5e7eb;background:#fff;overflow:auto}.hf-tabs a{height:100%;display:flex;align-items:center;gap:7px;color:#4b5563;text-decoration:none;font-size:17px;font-weight:520;white-space:nowrap;border-bottom:3px solid transparent}.hf-tabs a.active{color:#111827;font-weight:760;border-bottom-color:#111827}.hf-tabs span{font-size:11px;border:1px solid #e5e7eb;border-radius:7px;padding:1px 5px;color:#4f46e5}.hf-tabs strong{font-size:12px;color:#fff;background:#111827;border-radius:6px;padding:1px 5px}.hf-main-grid{display:grid;grid-template-columns:minmax(0,1fr) 530px;gap:0;max-width:1800px;margin:0 auto}.hf-content{border:0;border-radius:0;padding:32px 32px 56px 6%;background:#fff}.hf-sidebar{border:0;border-left:1px solid #e5e7eb;border-radius:0;padding:32px 6% 56px 32px;background:#fff}.dataset-viewer{border:1px solid #d8dee8;border-radius:10px;box-shadow:0 2px 8px rgba(15,23,42,.06);overflow:hidden;background:#fff}.dataset-viewer header{height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;border-bottom:1px solid #e5e7eb;gap:12px}.dataset-viewer h2{margin:0;font-size:18px;white-space:nowrap}.viewer-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}.viewer-actions a{color:#8b95a5;font-size:13px}.viewer-actions button,.sidebar-actions button{border:1px solid #d8dee8;background:#f8fafc;border-radius:7px;padding:7px 10px;font:inherit;font-size:13px;color:#374151}.viewer-splits{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid #e5e7eb}.viewer-splits button{min-height:72px;border:0;border-right:1px solid #e5e7eb;background:#fff;text-align:left;padding:12px 16px;display:grid;grid-template-columns:1fr auto;gap:4px 10px;font:inherit}.viewer-splits button:last-child{border-right:0}.viewer-splits span{grid-column:1/-1;color:#687386;font-size:14px}.viewer-splits strong{font-size:15px}.viewer-splits em{font-style:normal;font-size:22px;align-self:center}.viewer-menu-row{display:grid;grid-template-columns:1fr 1fr;background:#fbfcfe;border-bottom:1px solid #e5e7eb}.viewer-menu{padding:10px 16px;display:flex;gap:8px;flex-wrap:wrap}.viewer-menu+ .viewer-menu{border-left:1px solid #e5e7eb}.viewer-menu button{border:1px solid #d8dee8;border-radius:999px;background:#fff;padding:6px 10px;font:inherit;font-size:13px}.viewer-search{height:48px;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;gap:10px;padding:0 16px;color:#98a1b2}.viewer-search input{border:0;outline:0;width:100%;font:inherit;font-size:16px}.viewer-panels{border-bottom:1px solid #e5e7eb}.viewer-panel{padding:12px 16px;background:#f8fafc;color:#374151;font-size:13px}.viewer-panel code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}.viewer-column-profile{padding:14px 16px;border-bottom:1px solid #e5e7eb;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}.viewer-column-profile strong{display:block;font-size:15px}.viewer-column-profile span{color:#7b8494;font-size:14px;font-style:italic}.mini-histogram{height:42px;display:flex;align-items:end;gap:4px;margin-top:8px}.mini-histogram i{display:block;width:14px;background:#98a1b2;border-radius:2px 2px 0 0}.viewer-column-profile small{display:flex;width:176px;justify-content:space-between;color:#8b95a5}.hf-row-preview{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:15px;color:#1f2937}.preview-row{padding:14px 16px;border-bottom:1px solid #e5e7eb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.preview-heading{background:#fbfcfe}.viewer-pagination{height:50px;display:flex;align-items:center;justify-content:center;gap:18px;color:#6b7280;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;border-top:1px solid #e5e7eb}.viewer-pagination button{border:0;background:transparent;color:#6b7280;font:inherit;cursor:pointer}.viewer-pagination button.active{border:1px solid #d8dee8;border-radius:10px;padding:6px 12px;color:#111827;background:#fff}.viewer-status{margin:0;padding:8px 16px;border-top:1px solid #e5e7eb;color:#687386;font-size:13px}.hf-card-markdown{margin-top:54px}.hf-card-markdown h2{font-size:24px;color:#263244}.hf-card-markdown p{font-size:16px;line-height:1.6;color:#374151}.sidebar-action-shell{position:relative;border-bottom:1px solid #eef0f4;padding-bottom:26px}.sidebar-actions{display:flex;gap:10px}.sidebar-actions .primary-action{background:#030712;color:#fff;border-color:#030712;min-width:210px;font-weight:700}.sidebar-popover{position:absolute;right:0;top:58px;z-index:4;width:min(460px,100%);border:1px solid #d8dee8;border-radius:10px;background:#fff;box-shadow:0 18px 40px rgba(15,23,42,.18);padding:16px}.sidebar-popover strong{display:block;font-size:17px;margin-bottom:12px}.code-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}.code-tabs button{border:1px solid #d8dee8;border-radius:7px;background:#fff;padding:7px 10px;font:inherit;font-size:13px}.code-tabs button.active{background:#111827;color:#fff;border-color:#111827}.sidebar-popover pre{margin:0;border:1px solid #e5e7eb;border-radius:8px;background:#f8fafc;padding:12px;overflow:auto}.sidebar-popover code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:13px;white-space:pre}.locked-popover{background:repeating-linear-gradient(135deg,#fff,#fff 12px,#f8fafc 12px,#f8fafc 24px)}.locked-popover p{margin:0;color:#687386;line-height:1.45}.more-popover{width:260px;display:grid;gap:8px}.more-popover button{border:1px solid #e5e7eb;border-radius:7px;background:#f3f4f6;color:#9aa3b2;padding:9px 10px;text-align:left;font:inherit;text-decoration:line-through;cursor:not-allowed}.downloads-row{height:88px;border-bottom:1px solid #eef0f4;display:flex;align-items:center;justify-content:space-between;gap:20px}.downloads-row span{color:#667085;font-size:15px}.downloads-row span:after{content:"";display:inline-block;width:150px;border-bottom:1px dotted #d8dee8;margin-left:16px;vertical-align:middle}.downloads-row strong{font-size:19px}.hf-info-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;border-bottom:1px solid #eef0f4;padding:26px 0 28px}.hf-info-grid div{border:1px solid #e5e7eb;border-radius:9px;padding:10px 12px}.hf-info-grid dt{font-size:13px;color:#98a1b2;font-weight:650}.hf-info-grid dd{font-size:14px;color:#111827;margin-top:4px}.hf-info-grid a{color:#111827;text-decoration:none}.hf-info-grid a:hover{text-decoration:underline}.hf-side-section{border-bottom:1px solid #eef0f4;padding:24px 0}.hf-side-section h3{font-size:18px;margin:0 0 14px;color:#1f2937}.hf-files{list-style:none;margin:0;padding:0;display:grid;gap:10px}.hf-files li{border:1px solid #e5e7eb;border-radius:10px;padding:11px 12px;display:grid;grid-template-columns:1fr auto;gap:5px 10px}.hf-files span{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-weight:700}.hf-files strong,.hf-files em,.hf-files a{font-size:13px;color:#8b95a5}.hf-model-list{list-style:none;margin:0;padding:0;display:grid;gap:12px}.hf-model-list li{border:1px solid #e5e7eb;border-radius:10px;padding:12px;box-shadow:0 1px 4px rgba(15,23,42,.04)}.hf-model-list strong{display:block;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.hf-model-list span{display:block;color:#98a1b2;font-size:13px;margin-top:5px}.hf-compact-header{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:0 6%;height:58px;border-bottom:1px solid #e5e7eb;background:#fff}.hf-compact-header .hf-title-row{min-width:0;flex:1}.hf-compact-header .hf-title-row h1{font-size:19px}.hf-compact-header .hf-title-row h1 strong{font-size:20px}.hf-compact-header .hf-tabs{height:100%;padding:0;border-bottom:0;flex:0 0 auto}.data-studio-layout{display:grid;grid-template-columns:minmax(0,2fr) minmax(420px,1fr);gap:16px;padding:16px;background:#fff}.studio-viewer-column,.studio-agent-column{min-height:calc(100vh - 170px)}.studio-viewer-column .dataset-viewer{height:100%;border-radius:8px}.studio-dataset-viewer header{display:none}.studio-dataset-viewer .viewer-splits{border-top:0}.studio-dataset-viewer .hf-row-preview{font-size:14px}.studio-dataset-viewer .preview-row{padding:13px 14px}.studio-panel-actions{display:flex;gap:6px;margin-left:auto}.studio-panel-actions button{border:1px solid #d8dee8;background:#fff;border-radius:7px;padding:5px 8px;font:inherit}.studio-agent-column{position:relative;border:1px solid #d8dee8;border-radius:8px;background:#fff;padding:0;display:grid;grid-template-rows:auto 1fr auto;box-shadow:0 1px 4px rgba(15,23,42,.04)}.studio-agent-tabs{height:54px;display:flex;justify-content:center;gap:30px;border-bottom:1px solid #e5e7eb}.studio-agent-tabs button{border:0;background:transparent;font:inherit;color:#536073;padding:0 8px;border-bottom:3px solid transparent}.studio-agent-tabs button.active{color:#111827;font-weight:750;border-bottom-color:#111827}.studio-agent-tabs span{background:#e5e7eb;border-radius:5px;padding:2px 7px;font-size:12px;font-weight:800}.studio-agent-body{display:grid;place-items:center;padding:26px}.studio-agent-body pre{width:100%;align-self:start;margin:0;border:1px solid #e5e7eb;border-radius:8px;background:#f8fafc;padding:16px;overflow:auto}.studio-agent-body code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:13px}.studio-agent-empty{text-align:center;max-width:560px;color:#687386}.studio-agent-empty strong{display:block;color:#111827;font-size:18px;margin-top:12px}.studio-agent-empty p{margin:10px 0 20px}.studio-agent-icon{width:42px;height:42px;border-radius:14px;background:#fee2e2;color:#ef4444;display:inline-grid;place-items:center;font-weight:900}.studio-split-pills{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}.studio-split-pills button{border:1px solid #e5e7eb;background:#fff;border-radius:999px;padding:9px 16px;font:inherit;color:#4b5563;box-shadow:0 1px 3px rgba(15,23,42,.04)}.studio-split-pills button.active{border-color:#111827;color:#111827;background:#f8fafc}.studio-split-pills .more-splits{border-style:dashed}.studio-chatbar{margin:14px 16px 16px;border:1px solid #e5e7eb;border-radius:10px;box-shadow:0 2px 10px rgba(15,23,42,.08);padding:12px;display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center}.studio-chatbar input{border:0;outline:0;font:inherit;color:#111827}.studio-chatbar input:disabled{background:#fff;color:#8b95a5}.studio-chatbar span{font-size:12px;color:#536073;border:1px solid #e5e7eb;border-radius:999px;padding:6px 9px}.studio-chatbar button{width:38px;height:38px;border:0;border-radius:999px;background:#a3a8b3;color:#fff;font-size:20px}[hidden]{display:none!important}
 @media(max-width:1100px){.hf-topbar{padding:10px 20px;height:auto;flex-wrap:wrap}.global-search{order:3;width:100%}.global-nav{margin-left:0}.hf-repo-hero,.hf-tabs{padding-left:24px;padding-right:24px}.hf-main-grid{grid-template-columns:1fr}.hf-content,.hf-sidebar{padding:24px}.hf-sidebar{border-left:0;border-top:1px solid #e5e7eb}.dataset-viewer header{height:auto;align-items:flex-start;flex-direction:column;padding:14px 16px}.viewer-splits{grid-template-columns:1fr}.viewer-splits button{border-right:0;border-bottom:1px solid #e5e7eb}.hf-info-grid{grid-template-columns:1fr}}`;
 }
 
@@ -514,6 +619,7 @@ export async function generateSite(config, options = {}) {
   await write(outDir, "manifest.json", JSON.stringify({ ...model, mockNotice: MOCK_NOTICE }, null, 2), files);
   for (const dataset of model.datasets) {
     await write(outDir, `hf/${dataset.slug}/index.html`, renderHf(model, dataset), files);
+    await write(outDir, `hf/${dataset.slug}/data-studio/index.html`, renderHfDataStudio(model, dataset), files);
     await write(outDir, `kaggle/${dataset.slug}/index.html`, renderKaggle(model, dataset), files);
     for (const file of dataset.files) {
       await copyDownload(outDir, dataset, file, options, files);

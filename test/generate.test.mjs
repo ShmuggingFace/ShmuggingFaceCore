@@ -24,6 +24,7 @@ test("generateSite writes platform pages and mock notice", async () => {
 
   assert.ok(result.files.includes("hf/tiny-mock/index.html"));
   assert.ok(result.files.includes("hf/tiny-mock/data-studio/index.html"));
+  assert.ok(result.files.includes("hf/tiny-mock/files-and-versions/index.html"));
   assert.ok(result.files.includes("kaggle/tiny-mock/index.html"));
   assert.ok(result.files.includes("downloads/tiny-mock/data/train.csv"));
   const html = await readFile(join(outDir, "index.html"), "utf8");
@@ -44,6 +45,12 @@ test("generateSite writes platform pages and mock notice", async () => {
   assert.match(studioHtml, /DATA STUDIO|Get Started|data-studio-split/i);
   assert.match(studioHtml, /data-studio-tab="sql"/);
   assert.match(studioHtml, /Select a subset\/split to load the data/);
+  const filesHtml = await readFile(join(outDir, "hf/tiny-mock/files-and-versions/index.html"), "utf8");
+  assert.match(filesHtml, /data-files-page="tiny-mock"/);
+  assert.match(filesHtml, /History: 8 commits/);
+  assert.match(filesHtml, /data\/train\.csv/);
+  assert.match(filesHtml, /downloads\/tiny-mock\/data\/train\.csv/);
+  assert.match(filesHtml, /Contribute/);
 });
 
 test("generateSite requires download backing for listed files", async () => {
@@ -82,4 +89,7 @@ test("generateSite leaves external large-file links out of downloads", async () 
   const html = await readFile(join(outDir, "hf/large-mock/index.html"), "utf8");
   assert.match(html, /https:\/\/example.com\/big.parquet/);
   assert.match(html, /Open Git LFS/);
+  const filesHtml = await readFile(join(outDir, "hf/large-mock/files-and-versions/index.html"), "utf8");
+  assert.match(filesHtml, /https:\/\/example.com\/big.parquet/);
+  assert.match(filesHtml, /data-storage="Git LFS"/);
 });

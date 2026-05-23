@@ -921,6 +921,7 @@ function renderKaggle(model, dataset, activeTab = "data-card") {
       </nav>
       ${tabContent}
     </main>
+    <div class="kg-toast" data-kg-toast hidden>Mock action locked for review.</div>
   </div>
   <script>
     const page = document.querySelector("[data-kaggle-page]");
@@ -931,6 +932,24 @@ function renderKaggle(model, dataset, activeTab = "data-card") {
     });
     toggle(page.querySelector("[data-kg-code]"), page.querySelector("[data-kg-code-popover]"));
     toggle(page.querySelector("[data-kg-more]"), page.querySelector("[data-kg-more-popover]"));
+    const toast = document.querySelector("[data-kg-toast]");
+    const showToast = (message) => {
+      if (!toast) return;
+      toast.textContent = message;
+      toast.removeAttribute("hidden");
+      clearTimeout(showToast.timer);
+      showToast.timer = setTimeout(() => toast.setAttribute("hidden", ""), 1800);
+    };
+    page.querySelector(".kg-score")?.addEventListener("click", (event) => {
+      event.currentTarget.classList.toggle("active");
+      showToast(event.currentTarget.classList.contains("active") ? "Mock upvote recorded." : "Mock upvote removed.");
+    });
+    page.querySelector("[data-kg-view-more]")?.addEventListener("click", (event) => {
+      const expanded = page.classList.toggle("show-more");
+      event.currentTarget.textContent = expanded ? "⌃ View less" : "⌄ View more";
+    });
+    page.querySelectorAll(".kg-metadata-block button").forEach((button) => button.addEventListener("click", () => button.classList.toggle("open")));
+    page.querySelectorAll(".kg-tab-heading button").forEach((button) => button.addEventListener("click", () => showToast("This Kaggle action is locked in the mock.")));
   </script>`;
   return kaggleLayout({ title: `${dataset.title} | Shmaggle`, body });
 }
@@ -1020,17 +1039,35 @@ function renderKaggleTabContent(dataset, activeTab, { rowCount, fileRows, tags, 
       <p>${escapeHtml(dataset.description)}</p>
       <h3>Objective</h3>
       <p>This deliberately fake release is large enough to exercise row previews, file downloads, metadata, and review copy before a real upload to Kaggle.</p>
+      <p><strong>Do an EDA and try to predict which socks and laundry conditions achieve suspiciously stable pair success.</strong></p>
+      <div class="kg-article-image" aria-label="Mock dataset illustration"><span>${escapeHtml(dataset.title)}</span></div>
+      <button class="kg-view-more" type="button" data-kg-view-more>⌄ View more</button>
     </article>
     <aside class="kg-meta">
       <section><h2>Usability</h2><strong>${escapeHtml(dataset.kaggleUsability)}</strong></section>
       <section><h2>License</h2><a href="/manifest.json">${escapeHtml(dataset.license)}</a></section>
       <section><h2>Expected update frequency</h2><p>Never</p></section>
-      <section><h2>Files</h2><ul>${fileRows}</ul></section>
       <section><h2>Tags</h2><div class="kg-tags">${tags}</div></section>
     </aside>
     <section class="kg-explorer-span">
-      <h2>Data Explorer</h2>
       ${kaggleDataExplorer(dataset, rowCount)}
+    </section>
+    <section class="kg-social-proof">
+      <h2>See what others are saying about this dataset</h2>
+      <div class="kg-survey-grid">
+        <section><h3>What have you used this dataset for?</h3><p><strong>Learning</strong><span>9</span></p><p><strong>Research</strong><span>6</span></p><p><strong>Application</strong><span>3</span></p><p><strong>LLM Fine-Tuning</strong><span>0</span></p></section>
+        <section><h3>How would you describe this dataset?</h3><p><strong>Well-documented</strong><span>1</span></p><p><strong>Clean data</strong><span>1</span></p><p><strong>Original</strong><span>1</span></p><p><strong>Other</strong><span>0</span></p></section>
+      </div>
+    </section>
+    <section class="kg-metadata-block">
+      <h2>Metadata</h2>
+      ${["Collaborators", "Authors", "Coverage", "DOI Citation", "Provenance", "License"].map((item) => `<button type="button"><span>⌄</span>${item}</button>`).join("")}
+    </section>
+    <section class="kg-activity-block">
+      <h2>Activity Overview</h2>
+      <div><strong>Views</strong><span>34.7K</span><em>880 in the last 30 days</em></div>
+      <div><strong>Downloads</strong><span>${escapeHtml(String(dataset.downloads || "6,026"))}</span><em>213 in the last 30 days</em></div>
+      <div><strong>Comments</strong><span>${escapeHtml(String(dataset.discussions.length || 1))}</span><em>posted</em></div>
     </section>
   </section>`;
 }
@@ -1065,6 +1102,11 @@ function kaggleExplorerStyles() {
 	.kg-explorer-span{grid-column:1/-1}.kg-explorer-span>h2{font-size:32px;margin:12px 0 24px}.kg-data-explorer{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:32px;margin-top:16px}.kg-de-main{border:1px solid #dadce0;border-radius:12px;background:#fff;overflow:hidden}.kg-de-header{height:80px;display:flex;align-items:center;justify-content:space-between;gap:18px;padding:0 24px}.kg-de-header h3{margin:0;font-size:24px;line-height:1.2;color:#202124}.kg-de-header h3 span{color:#5f6368;font-weight:500}.kg-de-actions{display:flex;gap:16px;align-items:center}.kg-de-actions a,.kg-de-actions button{border:0;background:transparent;color:#3c4043;font:inherit;font-size:26px;text-decoration:none;cursor:pointer}.kg-de-toolbar{position:relative;height:72px;border-top:1px solid transparent;border-bottom:1px solid #dadce0;display:flex;align-items:end;justify-content:space-between;gap:16px;padding:0 20px}.kg-de-modes{height:100%;display:flex;align-items:end;gap:30px}.kg-de-modes button{height:100%;border:0;border-bottom:5px solid transparent;background:transparent;font:inherit;font-size:20px;color:#5f6368;padding:0;cursor:pointer}.kg-de-modes button.active{color:#202124;border-bottom-color:#202124}.kg-de-column-count{border:0;background:transparent;font:inherit;font-size:18px;color:#5f6368;padding:0 0 22px;cursor:pointer}.kg-de-column-menu{position:absolute;right:16px;top:62px;z-index:5;width:270px;max-height:280px;overflow:auto;border:1px solid #dadce0;border-radius:10px;background:#fff;box-shadow:0 16px 36px rgba(60,64,67,.24);padding:12px;display:grid;gap:8px}.kg-de-column-menu label{font-size:14px;color:#3c4043}.kg-de-table-wrap{max-height:560px;overflow:auto}.kg-de-table{min-width:1120px;border-collapse:separate;border-spacing:0;width:100%;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;color:#5f6368}.kg-de-table th,.kg-de-table td{border-right:1px solid #dadce0;border-bottom:1px solid #dadce0;min-width:190px;max-width:230px;padding:12px 14px;vertical-align:top;background:#fff}.kg-de-table th{position:sticky;top:0;z-index:2;height:92px;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;text-transform:none;color:#202124}.kg-de-col-title{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px}.kg-de-col-title span{font-size:12px;text-decoration:underline}.kg-de-col-title strong{font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.kg-de-col-title button{border:0;background:transparent;color:#5f6368;font-size:19px;cursor:pointer}.kg-de-table th em{display:block;margin-top:12px;color:#5f6368;font-style:normal;font-weight:500;font-size:14px}.kg-de-profile td{position:sticky;top:92px;z-index:1;height:112px;background:#fff;box-shadow:0 9px 16px rgba(60,64,67,.2)}.kg-de-profile strong{display:block;text-align:center;font-size:22px;color:#202124}.kg-de-profile span{display:block;text-align:center;color:#202124;font-family:Inter,ui-sans-serif,system-ui}.kg-de-profile dl{display:grid;grid-template-columns:1fr auto;gap:2px 10px;margin:0}.kg-de-profile dt{font-weight:800;color:#202124;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.kg-de-profile dd{margin:0;font-weight:800;color:#202124}.kg-de-profile dt:last-of-type,.kg-de-profile dd:last-of-type{background:#e8eaed;color:#5f6368}.kg-de-side{padding-top:2px}.kg-de-side h3{font-size:24px;margin:0 0 12px}.kg-de-side>a{display:inline-block;color:#202124;font-size:18px;text-decoration:underline;margin-bottom:22px}.kg-de-side>a span{color:#5f6368}.kg-de-file{height:42px;background:#f1f3f4;display:flex;align-items:center;gap:12px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:18px;margin-bottom:34px}.kg-de-file span{font-size:22px}.kg-de-side section{border-top:1px solid #dadce0;border-bottom:1px solid #dadce0;padding:28px 0}.kg-de-side h4{font-size:22px;margin:0 0 18px}.kg-de-side p{display:flex;align-items:center;gap:14px;margin:22px 0;color:#5f6368}.kg-de-side strong{font-size:20px;color:#5f6368}.kg-data-explorer[data-mode=compact] .kg-de-profile,.kg-data-explorer[data-mode=compact] .kg-de-table th em{display:none}.kg-data-explorer[data-mode=compact] .kg-de-table th{height:52px}.kg-data-explorer[data-mode=compact] .kg-de-table td{padding:8px 12px;min-width:160px}.kg-data-explorer[data-mode=column] .kg-de-table th:not(:first-child),.kg-data-explorer[data-mode=column] .kg-de-table td:not(:first-child){display:none}.kg-data-explorer[data-mode=column] .kg-de-table{min-width:520px}.kg-data-explorer[data-mode=column] .kg-de-table th,.kg-data-explorer[data-mode=column] .kg-de-table td{max-width:none;width:100%}.kg-data-explorer.summary-collapsed{grid-template-columns:minmax(0,1fr) 0;gap:0}.kg-data-explorer.summary-collapsed .kg-de-side{display:none}.kg-data-explorer.fullscreen{position:fixed;z-index:50;inset:24px;background:#fff;padding:24px;grid-template-columns:minmax(0,1fr) 300px}.kg-data-explorer.fullscreen .kg-de-table-wrap{max-height:calc(100vh - 220px)}@media(max-width:1200px){.kg-data-explorer{grid-template-columns:1fr}.kg-de-side{display:none}.kg-data-explorer.fullscreen{inset:10px;grid-template-columns:1fr}}@media(max-width:720px){.kg-de-header{height:auto;align-items:flex-start;padding:18px;flex-direction:column}.kg-de-toolbar{height:auto;align-items:flex-start;padding:0 16px;flex-direction:column}.kg-de-modes{height:58px}.kg-de-column-count{padding:0 0 14px}.kg-de-table th,.kg-de-table td{min-width:160px}.kg-de-header h3{font-size:20px}}`;
 }
 
+function kaggleFidelityStyles() {
+  return `
+	.kg-body{background:#fff;color:#202124}.kg-body .mock-ribbon{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;padding:0;border:0}.kg-shell{grid-template-columns:256px minmax(0,1fr);min-height:100vh}.kg-sidebar{top:0;height:100vh;padding:18px 24px;border-right:1px solid #e0e3e7}.kg-sidebar-top{height:44px;margin:0 0 30px;gap:24px}.kg-sidebar-top button{font-size:22px}.kg-wordmark{font-size:30px;letter-spacing:0}.kg-create{width:138px;height:50px;margin:0 0 24px -18px;gap:12px;font-size:14px;box-shadow:0 2px 7px rgba(60,64,67,.22)}.kg-create span{font-size:34px}.kg-primary-nav{gap:8px;padding-bottom:24px}.kg-primary-nav a,.kg-work a{height:36px;gap:20px;font-size:15px;border-radius:8px}.kg-primary-nav span{width:24px;font-size:16px}.kg-work{padding-top:24px}.kg-work h2{font-size:16px;margin:0 0 14px}.kg-work h3{font-size:15px;margin:18px 0 10px}.kg-thumb{width:26px;height:26px;font-size:14px}.kg-main{min-width:0}.kg-topbar{height:64px;padding:8px 16px 0;display:grid;grid-template-columns:minmax(262px,1fr) minmax(0,1200px) minmax(80px,1fr) auto;align-items:start;gap:18px}.kg-search{grid-column:2;height:48px;max-width:none;width:100%;flex:none;margin-left:0;padding:0 26px;gap:16px}.kg-search span{font-size:24px}.kg-search input{font-size:14px}.kg-avatar{grid-column:4;width:40px;height:40px;border-width:2px;margin-left:0}.kg-hero{display:grid;grid-template-columns:minmax(0,1fr) 280px;grid-template-rows:auto auto;column-gap:24px;row-gap:28px;max-width:1200px;margin:34px auto 0;padding:0}.kg-dataset-copy{grid-column:1;grid-row:1/3}.kg-author{height:34px;margin:0 0 56px;font-size:11px;letter-spacing:.08em;line-height:1}.kg-avatar.small{width:32px;height:32px;font-size:17px;margin-right:16px}.kg-hero h1{font-size:36px;line-height:1.18;max-width:860px;margin:0 0 14px;font-weight:800}.kg-hero p:not(.kg-author){font-size:16px;line-height:1.42;max-width:760px}.kg-hero-actions{grid-column:2;grid-row:1;gap:14px;align-self:start;justify-self:end;margin-top:0}.kg-hero-actions button,.kg-hero-actions a{height:36px;font-size:14px;font-weight:700;padding:0 16px;gap:9px}.kg-score{height:36px!important}.kg-score.active{background:#f8f9fa}.kg-score span{width:44px}.kg-score strong{padding:0 13px}.kg-download{padding:0 18px!important}.kg-medal{width:18px!important;height:18px!important}.kg-hero-actions [data-kg-more]{width:24px!important;font-size:24px}.kg-cover{grid-column:2;grid-row:2;width:280px;min-height:140px;justify-self:end;border-radius:12px;padding:20px}.kg-cover strong{font-size:22px;line-height:1.1}.kg-cover span{font-size:13px}.kg-tabs{max-width:1200px;height:64px;margin:8px auto 0;padding:0;border-bottom:1px solid #dadce0;gap:24px}.kg-tabs a{height:100%;font-size:16px;font-weight:400;border-bottom-width:4px}.kg-tabs a.active{font-weight:500}.kg-content-grid{max-width:1200px;margin:0 auto;display:grid;grid-template-columns:minmax(0,950px) 226px;gap:24px;padding:36px 0 88px}.kg-article{border:0;padding:0}.kg-article h2{font-size:24px;margin:0 0 42px}.kg-article h3{font-size:14px;margin:22px 0 6px}.kg-article p{font-size:15px;line-height:1.45;margin:0 0 18px;color:#3c4043}.kg-article-image{height:180px;margin:32px 0 34px;border-radius:0;background:radial-gradient(circle at 58% 72%,#ffe9a8 0 70px,transparent 72px),radial-gradient(circle at 46% 10%,#b31389 0 42px,transparent 43px),radial-gradient(circle at 75% 0%,#f7669f 0 66px,transparent 67px),linear-gradient(180deg,#e54398,#fbd6df);display:flex;align-items:flex-start;justify-content:center;overflow:hidden;color:#fff}.kg-article-image span{transform:translateY(104px) rotate(-22deg);font-size:22px;font-weight:800;opacity:.9}.kg-view-more{border:0;background:transparent;font:inherit;font-size:14px;font-weight:700;color:#202124;padding:0;margin:0 0 76px 12px;cursor:pointer}.kg-meta{border:0;padding:0}.kg-meta section{border:0;padding:0;margin:0 0 28px}.kg-meta h2{font-size:18px;margin:0 0 7px}.kg-meta strong,.kg-meta p,.kg-meta a{font-size:16px;color:#5f6368}.kg-tags{gap:8px}.kg-tags span{font-size:14px;padding:7px 12px}.kg-explorer-span{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,950px) 226px;gap:24px;margin-top:24px}.kg-explorer-span>h2{display:none}.kg-data-explorer{display:grid;grid-column:1/-1;grid-template-columns:minmax(0,950px) 226px;gap:24px;margin:0}.kg-de-main{border-radius:6px}.kg-de-header{height:86px;padding:0 24px}.kg-de-header h3{font-size:22px}.kg-de-actions{gap:18px}.kg-de-actions a,.kg-de-actions button{font-size:26px}.kg-de-toolbar{height:66px;padding:0 24px}.kg-de-modes{gap:26px}.kg-de-modes button{font-size:16px;border-bottom-width:4px}.kg-de-column-count{font-size:14px;padding-bottom:22px}.kg-de-table-wrap{max-height:520px}.kg-de-table th,.kg-de-table td{min-width:220px;max-width:250px;padding:13px 20px}.kg-de-table th{height:126px}.kg-de-col-title strong{font-size:16px}.kg-de-table th em{font-size:13px}.kg-de-profile td{top:126px;height:104px}.kg-de-profile strong{font-size:24px}.kg-de-side{padding-top:0}.kg-de-side h3{font-size:22px;margin-bottom:12px}.kg-de-side>a{font-size:16px;margin-bottom:22px}.kg-de-file{height:34px;font-size:15px;margin-bottom:48px}.kg-de-side section{padding:28px 0}.kg-de-side h4{font-size:22px}.kg-de-side p{font-size:16px}.kg-social-proof,.kg-metadata-block,.kg-activity-block{grid-column:1/-1;border:0;padding:44px 0 0;background:#fff}.kg-social-proof h2,.kg-metadata-block h2,.kg-activity-block h2{font-size:22px;margin:0 0 18px}.kg-survey-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}.kg-survey-grid section{border:1px solid #e0e3e7;border-radius:8px;padding:18px}.kg-survey-grid h3{font-size:16px;margin:0 0 12px}.kg-survey-grid p{display:flex;justify-content:space-between;margin:10px 0;color:#5f6368}.kg-metadata-block button{width:100%;height:48px;border:0;border-top:1px solid #e0e3e7;background:#fff;text-align:left;font:inherit;font-size:15px;cursor:pointer}.kg-metadata-block button.open{background:#f8f9fa}.kg-metadata-block button span{display:inline-block;width:28px}.kg-activity-block{display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px}.kg-activity-block h2{grid-column:1/-1}.kg-activity-block div{border:1px solid #e0e3e7;border-radius:8px;padding:16px}.kg-activity-block strong{display:block;font-size:15px}.kg-activity-block span{display:block;font-size:24px;font-weight:700;margin:8px 0}.kg-activity-block em{color:#5f6368;font-size:13px;font-style:normal}.kg-toast{position:fixed;right:24px;bottom:24px;z-index:60;background:#202124;color:#fff;border-radius:8px;padding:12px 16px;box-shadow:0 8px 24px rgba(60,64,67,.25);font-size:14px}@media(max-width:1200px){.kg-shell{grid-template-columns:1fr}.kg-sidebar{position:static;height:auto}.kg-topbar,.kg-hero,.kg-tabs,.kg-content-grid{max-width:none;margin-left:24px;margin-right:24px}.kg-topbar{grid-template-columns:1fr auto}.kg-search{grid-column:1}.kg-avatar{grid-column:2}.kg-hero,.kg-content-grid,.kg-explorer-span,.kg-data-explorer{grid-template-columns:1fr}.kg-dataset-copy,.kg-hero-actions,.kg-cover{grid-column:1;grid-row:auto;justify-self:start}.kg-de-side{display:none}}`;
+}
+
 async function write(outDir, path, contents, files) {
   const target = join(outDir, path);
   await mkdir(resolve(target, ".."), { recursive: true });
@@ -1094,7 +1136,7 @@ export async function generateSite(config, options = {}) {
   await rm(outDir, { recursive: true, force: true });
   await mkdir(outDir, { recursive: true });
   await write(outDir, "index.html", renderHome(model), files);
-  await write(outDir, "assets/styles.css", styles() + hfSpecificStyles() + kaggleSpecificStyles() + kaggleAlignmentStyles() + kaggleTabStyles() + kaggleExplorerStyles(), files);
+  await write(outDir, "assets/styles.css", styles() + hfSpecificStyles() + kaggleSpecificStyles() + kaggleAlignmentStyles() + kaggleTabStyles() + kaggleExplorerStyles() + kaggleFidelityStyles(), files);
   await write(outDir, "manifest.json", JSON.stringify({ ...model, mockNotice: MOCK_NOTICE }, null, 2), files);
   for (const dataset of model.datasets) {
     await write(outDir, `hf/${dataset.slug}/index.html`, renderHf(model, dataset), files);

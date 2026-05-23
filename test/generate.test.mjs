@@ -77,7 +77,7 @@ test("generateSite writes platform pages and mock notice", async () => {
   assert.match(kaggleHtml, /Column/);
   assert.match(kaggleHtml, /Data Explorer/);
   assert.match(kaggleHtml, /1 file/);
-  assert.match(kaggleHtml, /href="\/downloads\/tiny-mock\/data\/train\.csv" download>Download/);
+  assert.match(kaggleHtml, /href="\/downloads\/tiny-mock\/data\/train\.csv" download>.*Download/);
   assert.match(kaggleHtml, /kaggle datasets download -d dataset-team\/tiny-mock/);
   const kaggleCodeHtml = await readFile(join(outDir, "kaggle/tiny-mock/code/index.html"), "utf8");
   assert.match(kaggleCodeHtml, /class="active" href="\/kaggle\/tiny-mock\/code\/">Code/);

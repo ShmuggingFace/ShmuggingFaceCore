@@ -759,7 +759,7 @@ function renderHfDataStudio(model, dataset) {
   return layout({ title: `${dataset.title} Data Studio | ShmuggingFace`, body, site: model.site });
 }
 
-function renderKaggle(model, dataset) {
+function renderKaggle(model, dataset, activeTab = "data-card") {
   const rowCount = Math.max(dataset.rowCount, dataset.rows.length, 1);
   const firstFile = dataset.files.find((file) => !file.downloadUrl) || dataset.files[0];
   const downloadHref = firstFile ? fileHref(dataset, firstFile) : "/manifest.json";
@@ -781,6 +781,7 @@ function renderKaggle(model, dataset) {
     })
     .join("");
   const codeSnippet = `kaggle datasets download -d ${dataset.owner}/${dataset.slug}\npython - <<'PY'\nimport pandas as pd\nrows = pd.read_csv("data/train.csv")\nprint(rows.describe(include="all"))\nPY`;
+  const tabContent = renderKaggleTabContent(dataset, activeTab, { rowCount, fileRows, tags, codeSnippet });
   const body = `<div class="kg-shell" data-kaggle-page="${escapeHtml(dataset.slug)}">
     <aside class="kg-sidebar">
       <div class="kg-sidebar-top"><button type="button" aria-label="Menu">☰</button><a class="kg-wordmark" href="/">shmaggle</a></div>
@@ -831,39 +832,12 @@ function renderKaggle(model, dataset) {
         <div class="kg-cover" aria-label="Mock dataset cover"><strong>${escapeHtml(dataset.title)}</strong><span>${escapeHtml(formatNumber(rowCount))} rows</span></div>
       </section>
       <nav class="kg-tabs" aria-label="Dataset tabs">
-        <a class="active" href="/kaggle/${dataset.slug}/">Data Card</a>
-        <a href="#code">Code (${escapeHtml(String(dataset.files.length || 1))})</a>
-        <a href="#discussion">Discussion (${escapeHtml(String(dataset.discussions.length || 1))})</a>
-        <a href="#suggestions">Suggestions (0)</a>
+        <a class="${activeTab === "data-card" ? "active" : ""}" href="/kaggle/${dataset.slug}/">Data Card</a>
+        <a class="${activeTab === "code" ? "active" : ""}" href="/kaggle/${dataset.slug}/code/">Code (${escapeHtml(String(dataset.files.length || 1))})</a>
+        <a class="${activeTab === "discussion" ? "active" : ""}" href="/kaggle/${dataset.slug}/discussion/">Discussion (${escapeHtml(String(dataset.discussions.length || 1))})</a>
+        <a class="${activeTab === "suggestions" ? "active" : ""}" href="/kaggle/${dataset.slug}/suggestions/">Suggestions (0)</a>
       </nav>
-      <section class="kg-content-grid">
-        <article class="kg-article">
-          <h2>About Dataset</h2>
-          <p>${escapeHtml(dataset.description)}</p>
-          <h3>Objective</h3>
-          <p>This deliberately fake release is large enough to exercise row previews, file downloads, metadata, and review copy before a real upload to Kaggle.</p>
-          <h3>Data Explorer</h3>
-          <div class="kg-explorer-toolbar">
-            <button type="button">Data</button>
-            <button type="button">Summary</button>
-            <span>${escapeHtml(formatNumber(rowCount))} rows · ${escapeHtml(String(dataset.columns.length))} columns</span>
-          </div>
-          ${table(dataset)}
-          <h3 id="code">Code</h3>
-          <pre class="kg-code-block"><code>${escapeHtml(codeSnippet)}</code></pre>
-          <h3 id="discussion">Discussion</h3>
-          <ul class="kg-discussions">
-            ${(dataset.discussions.length ? dataset.discussions : ["Does the mock preview communicate the release shape clearly?"]).map((item, index) => `<li><strong>${escapeHtml(item.title || item)}</strong><span>${index + 1} replies</span></li>`).join("")}
-          </ul>
-        </article>
-        <aside class="kg-meta">
-          <section><h2>Usability</h2><strong>${escapeHtml(dataset.kaggleUsability)}</strong></section>
-          <section><h2>License</h2><a href="/manifest.json">${escapeHtml(dataset.license)}</a></section>
-          <section><h2>Expected update frequency</h2><p>Never</p></section>
-          <section><h2>Files</h2><ul>${fileRows}</ul></section>
-          <section><h2>Tags</h2><div class="kg-tags">${tags}</div></section>
-        </aside>
-      </section>
+      ${tabContent}
     </main>
   </div>
   <script>
@@ -879,6 +853,109 @@ function renderKaggle(model, dataset) {
   return kaggleLayout({ title: `${dataset.title} | Shmaggle`, body });
 }
 
+function renderKaggleTabContent(dataset, activeTab, { rowCount, fileRows, tags, codeSnippet }) {
+  const discussions = dataset.discussions.length ? dataset.discussions : [
+    "Does the mock preview communicate the release shape clearly?",
+    "Should the real release include a larger validation split?",
+    "Please verify the generated download files before publishing.",
+  ];
+  if (activeTab === "code") {
+    return `<section class="kg-content-grid kg-code-page">
+      <article class="kg-article">
+        <div class="kg-tab-heading">
+          <h2>Code</h2>
+          <button type="button">New Notebook</button>
+        </div>
+        <div class="kg-code-card">
+          <span>Notebook</span>
+          <h3>Quick statistical audit for ${escapeHtml(dataset.title)}</h3>
+          <p>Loads the mock CSV, checks row counts, describes numeric columns, and plots pair probability by split.</p>
+          <pre class="kg-code-block"><code>${escapeHtml(codeSnippet)}</code></pre>
+        </div>
+        <div class="kg-code-card">
+          <span>Script</span>
+          <h3>Download and inspect files</h3>
+          <p>Uses the Kaggle-style command line flow reviewers expect before a real dataset release.</p>
+          <pre class="kg-code-block"><code>${escapeHtml(`kaggle datasets files ${dataset.owner}/${dataset.slug}\nkaggle datasets download -d ${dataset.owner}/${dataset.slug} --unzip\nls -lh data/`)}</code></pre>
+        </div>
+      </article>
+      <aside class="kg-meta">
+        <section><h2>Code type</h2><p>Notebook and utility script mocks</p></section>
+        <section><h2>Language</h2><p>Python</p></section>
+        <section><h2>Dependencies</h2><div class="kg-tags"><span>pandas</span><span>polars</span><span>matplotlib</span></div></section>
+      </aside>
+    </section>`;
+  }
+  if (activeTab === "discussion") {
+    return `<section class="kg-content-grid kg-discussion-page">
+      <article class="kg-article">
+        <div class="kg-tab-heading">
+          <h2>Discussion</h2>
+          <button type="button">New Topic</button>
+        </div>
+        <div class="kg-discussion-controls">
+          <button type="button" class="active">All</button>
+          <button type="button">Questions</button>
+          <button type="button">Comments</button>
+          <label><span>⌕</span><input placeholder="Search discussions"></label>
+        </div>
+        <ul class="kg-discussions kg-discussion-list">
+          ${discussions.map((item, index) => `<li><div><strong>${escapeHtml(item.title || item)}</strong><p>#${index + 1} opened for review by ${escapeHtml(dataset.contactName || dataset.owner)}</p></div><span>${index + 1} replies</span></li>`).join("")}
+        </ul>
+      </article>
+      <aside class="kg-meta">
+        <section><h2>Community guidelines</h2><p>Mock discussion only. No external comments are posted.</p></section>
+        <section><h2>Participants</h2><div class="kg-tags"><span>${escapeHtml(dataset.contactName || dataset.owner)}</span><span>Reviewer</span><span>Dataset owner</span></div></section>
+      </aside>
+    </section>`;
+  }
+  if (activeTab === "suggestions") {
+    return `<section class="kg-content-grid kg-suggestions-page">
+      <article class="kg-article">
+        <div class="kg-tab-heading">
+          <h2>Suggestions</h2>
+          <button type="button" disabled>Suggest edit</button>
+        </div>
+        <div class="kg-empty-state">
+          <strong>No suggestions yet</strong>
+          <p>This mock shows the empty Kaggle suggestions state reviewers should see before anyone proposes metadata, license, or file changes.</p>
+        </div>
+        <div class="kg-code-card">
+          <span>Suggested checks</span>
+          <h3>What reviewers can still inspect</h3>
+          <p>Confirm the title, subtitle, tags, license, downloads, and preview rows before this becomes a real release.</p>
+        </div>
+      </article>
+      <aside class="kg-meta">
+        <section><h2>Open suggestions</h2><strong>0</strong></section>
+        <section><h2>Closed suggestions</h2><p>0</p></section>
+      </aside>
+    </section>`;
+  }
+  return `<section class="kg-content-grid">
+    <article class="kg-article">
+      <h2>About Dataset</h2>
+      <p>${escapeHtml(dataset.description)}</p>
+      <h3>Objective</h3>
+      <p>This deliberately fake release is large enough to exercise row previews, file downloads, metadata, and review copy before a real upload to Kaggle.</p>
+      <h3>Data Explorer</h3>
+      <div class="kg-explorer-toolbar">
+        <button type="button">Data</button>
+        <button type="button">Summary</button>
+        <span>${escapeHtml(formatNumber(rowCount))} rows · ${escapeHtml(String(dataset.columns.length))} columns</span>
+      </div>
+      ${table(dataset)}
+    </article>
+    <aside class="kg-meta">
+      <section><h2>Usability</h2><strong>${escapeHtml(dataset.kaggleUsability)}</strong></section>
+      <section><h2>License</h2><a href="/manifest.json">${escapeHtml(dataset.license)}</a></section>
+      <section><h2>Expected update frequency</h2><p>Never</p></section>
+      <section><h2>Files</h2><ul>${fileRows}</ul></section>
+      <section><h2>Tags</h2><div class="kg-tags">${tags}</div></section>
+    </aside>
+  </section>`;
+}
+
 function styles() {
   return `:root{color-scheme:light;--ink:#17202a;--muted:#596579;--line:#d9dee8;--panel:#ffffff;--bg:#f6f7f9;--hf:#ffb000;--kg:#20a7db;--green:#1e7f5c}*{box-sizing:border-box}body{margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--ink);background:var(--bg)}a{color:inherit}.mock-ribbon{background:#1f2937;color:#fff;text-align:center;padding:8px 16px;font-size:13px;font-weight:700}.topbar{height:64px;display:flex;align-items:center;justify-content:space-between;padding:0 28px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:2}.brand{display:flex;align-items:center;gap:10px;text-decoration:none;font-weight:800}.brand-mark{font-size:24px}.topbar nav{display:flex;gap:14px;align-items:center;flex-wrap:wrap}.topbar nav a{font-size:14px;text-decoration:none;color:var(--muted)}.topbar nav a[aria-current=page]{color:var(--ink);font-weight:700}main{max-width:1180px;margin:0 auto;padding:28px}.home-hero{padding:52px 0 34px}.eyebrow{text-transform:uppercase;letter-spacing:.08em;font-size:12px;font-weight:800;color:var(--green);margin:0 0 10px}.home-hero h1,.repo-header h1{font-size:44px;line-height:1.05;margin:0 0 14px;letter-spacing:0}.home-hero p,.repo-header p{max-width:780px;color:var(--muted);font-size:18px;line-height:1.55}.platform-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin-top:30px}.platform-card{min-height:210px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:24px;text-decoration:none;display:flex;flex-direction:column;gap:14px}.platform-card strong{font-size:24px}.platform-card span:last-child{color:var(--muted);line-height:1.45}.platform-logo{font-weight:900}.hf-card{border-top:6px solid var(--hf)}.kaggle-card{border-top:6px solid var(--kg)}.dataset-list{border-top:1px solid var(--line);padding-top:28px}.dataset-list ul{list-style:none;padding:0;margin:0;display:grid;gap:10px}.dataset-list li{display:flex;justify-content:space-between;background:#fff;border:1px solid var(--line);border-radius:8px;padding:14px 16px}.repo-header{border:1px solid var(--line);border-radius:8px;background:#fff;padding:26px}.repo-header.hf{border-top:6px solid var(--hf)}.repo-header.kaggle{border-top:6px solid var(--kg)}.chips{display:flex;gap:8px;flex-wrap:wrap}.chips span{border:1px solid var(--line);border-radius:999px;padding:5px 10px;font-size:13px;color:var(--muted)}.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-top:18px;overflow:auto}.tabs a{padding:14px 16px;text-decoration:none;color:var(--muted);white-space:nowrap}.tabs .active{color:var(--ink);font-weight:800;border-bottom:3px solid var(--hf)}.kaggle-tabs .active{border-bottom-color:var(--kg)}.two-col{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:24px;margin-top:24px}article,aside{background:#fff;border:1px solid var(--line);border-radius:8px;padding:22px}h2{font-size:24px;margin:0 0 12px}h3{font-size:16px;margin:22px 0 10px}.viewer-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:14px 0}.viewer-toolbar input,.viewer-toolbar button,.kaggle-actions button{border:1px solid var(--line);border-radius:6px;background:#fff;padding:9px 11px;font:inherit}.viewer-toolbar span{font-size:13px;color:var(--muted)}.table-shell{overflow:auto;border:1px solid var(--line);border-radius:8px}table{border-collapse:collapse;min-width:720px;width:100%;font-size:14px}th,td{border-bottom:1px solid var(--line);text-align:left;padding:10px 12px;vertical-align:top}th{background:#f0f3f7;font-size:12px;text-transform:uppercase;color:var(--muted)}.stat-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.stat-grid span,.score-card{border:1px solid var(--line);border-radius:8px;padding:12px;color:var(--muted)}.stat-grid strong,.score-card strong{display:block;color:var(--ink);font-size:20px;margin-top:6px}.file-list,.discussion-list{list-style:none;margin:0;padding:0;display:grid;gap:8px}.file-list li{border:1px solid var(--line);border-radius:8px;padding:10px;display:grid;grid-template-columns:1fr auto;gap:4px 10px}.file-list span{font-weight:700}.file-list strong,.file-list em{color:var(--muted);font-size:13px}.file-list a{font-size:13px}.discussion-list li{padding:10px;border-left:3px solid var(--hf);background:#f8fafc}.kaggle-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}.kaggle-actions button:first-child{background:#111827;color:#fff}.score-card strong{font-size:38px}dl{display:grid;grid-template-columns:auto 1fr;gap:8px 12px}dt{font-weight:800}dd{margin:0;color:var(--muted)}footer{max-width:1180px;margin:24px auto;padding:20px 28px;color:var(--muted);display:flex;gap:16px;flex-wrap:wrap;border-top:1px solid var(--line)}@media(max-width:820px){.topbar{height:auto;align-items:flex-start;gap:12px;padding:14px 18px;flex-direction:column}main{padding:18px}.home-hero h1,.repo-header h1{font-size:34px}.platform-actions,.two-col{grid-template-columns:1fr}.dataset-list li{align-items:flex-start;gap:6px;flex-direction:column}}`;
 }
@@ -892,6 +969,11 @@ body{background:#fff;color:#111827}.mock-ribbon{background:#111827;color:#fff;pa
 function kaggleSpecificStyles() {
   return `
 .kg-body{background:#fff;color:#202124;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.kg-body .mock-ribbon{position:sticky;top:0;z-index:20;background:#111827;color:#fff}.kg-shell{display:grid;grid-template-columns:350px minmax(0,1fr);min-height:calc(100vh - 34px)}.kg-sidebar{position:sticky;top:34px;align-self:start;height:calc(100vh - 34px);border-right:1px solid #dadce0;background:#fff;padding:22px 31px;overflow:auto}.kg-sidebar-top{display:flex;align-items:center;gap:28px;margin-bottom:38px}.kg-sidebar-top button{border:0;background:transparent;font-size:30px;line-height:1;cursor:pointer}.kg-wordmark{color:#20a7db;text-decoration:none;font-size:40px;line-height:1;font-weight:500;letter-spacing:-.02em}.kg-create{width:160px;height:68px;border:1px solid #dadce0;border-radius:999px;box-shadow:0 2px 8px rgba(60,64,67,.24);display:flex;align-items:center;justify-content:center;gap:14px;text-decoration:none;color:#3c4043;font-size:19px;margin-bottom:28px}.kg-create span{font-size:46px;line-height:0;color:#20a7db;font-weight:300}.kg-primary-nav{display:grid;gap:7px;border-bottom:1px solid #dadce0;padding-bottom:26px}.kg-primary-nav a,.kg-work a{height:52px;display:flex;align-items:center;gap:22px;color:#5f6368;text-decoration:none;font-size:20px;border-radius:999px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.kg-primary-nav span{width:28px;text-align:center;color:#5f6368}.kg-work{padding-top:20px}.kg-work h2{font-size:18px;margin:0 0 12px;color:#5f6368;font-weight:600}.kg-work h3{font-size:18px;color:#5f6368;margin:18px 0 8px;font-weight:500}.kg-thumb{width:28px;height:28px;border-radius:6px;background:#dff3fd;color:#20a7db;display:grid;place-items:center;font-weight:800;flex:0 0 auto}.kg-main{min-width:0;background:#fff}.kg-topbar{height:96px;display:flex;align-items:center;gap:28px;padding:0 6% 0 64px;border-bottom:0}.kg-search{height:66px;max-width:1460px;flex:1;border:1px solid #dadce0;border-radius:999px;display:flex;align-items:center;gap:18px;padding:0 32px;color:#202124}.kg-search span{font-size:36px;line-height:1}.kg-search input{border:0;outline:0;width:100%;font:inherit;font-size:19px}.kg-search input::placeholder{color:#5f6368}.kg-avatar{width:42px;height:42px;border:3px solid #20a7db;border-radius:999px;display:grid;place-items:center;text-decoration:none;background:#fff}.kg-avatar.small{width:46px;height:46px;font-size:24px;display:inline-grid;margin-right:20px;vertical-align:middle}.kg-hero{display:grid;grid-template-columns:minmax(0,1fr) auto 384px;gap:32px;padding:52px 6% 0 64px;align-items:start}.kg-author{display:flex;align-items:center;margin:0 0 88px;color:#5f6368;font-size:14px;font-weight:800;letter-spacing:.08em}.kg-author strong{color:#5f6368;text-transform:uppercase}.kg-hero h1{font-size:49px;line-height:1.22;margin:0 0 18px;color:#202124;font-weight:800;max-width:980px}.kg-hero p:not(.kg-author){font-size:21px;line-height:1.45;color:#5f6368;margin:0;max-width:990px}.kg-hero-actions{position:relative;display:flex;align-items:center;gap:22px;justify-self:end;grid-column:2/4}.kg-hero-actions button,.kg-hero-actions a{height:52px;border:1px solid #bdc1c6;border-radius:999px;background:#fff;color:#202124;text-decoration:none;font:inherit;font-size:20px;font-weight:750;padding:0 22px;display:inline-flex;align-items:center;gap:12px}.kg-score{padding:0!important;overflow:hidden}.kg-score span{height:100%;width:52px;display:grid;place-items:center;border-right:1px solid #bdc1c6}.kg-score strong{padding:0 18px}.kg-download{background:#202124!important;color:#fff!important;border-color:#202124!important}.kg-medal{width:26px!important;height:26px!important;padding:0!important;background:linear-gradient(135deg,#bd7a3b,#f4d098)!important;border:0!important}.kg-hero-actions [data-kg-more]{width:42px;padding:0!important;border:0;background:transparent;font-size:32px}.kg-code-popover,.kg-more-popover{position:absolute;right:0;top:62px;z-index:10;width:520px;border:1px solid #dadce0;border-radius:12px;background:#fff;box-shadow:0 18px 44px rgba(60,64,67,.28);padding:18px}.kg-code-popover strong{display:block;margin-bottom:12px}.kg-code-popover pre,.kg-code-block{margin:0;background:#f8f9fa;border:1px solid #e8eaed;border-radius:10px;padding:16px;overflow:auto}.kg-code-popover code,.kg-code-block code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:14px}.kg-more-popover{width:280px;display:grid;gap:8px}.kg-more-popover button{height:auto;border-radius:8px;background:#f1f3f4;color:#9aa0a6;text-decoration:line-through;cursor:not-allowed;padding:10px 12px}.kg-cover{grid-column:3;grid-row:2;min-height:194px;border-radius:16px;background:radial-gradient(circle at 18% 45%,#7c3aed 0 35px,transparent 36px),radial-gradient(circle at 48% 60%,#facc15 0 58px,transparent 59px),radial-gradient(circle at 82% 42%,#f472b6 0 34px,transparent 35px),linear-gradient(135deg,#ddb7ff,#92d5ff);padding:30px;color:#202124;display:flex;flex-direction:column;justify-content:center;box-shadow:inset 0 0 0 1px rgba(255,255,255,.35)}.kg-cover strong{font-size:28px;line-height:1.1;max-width:260px}.kg-cover span{font-size:18px;margin-top:12px;font-weight:700}.kg-tabs{height:72px;margin:30px 0 0;padding:0 6% 0 64px;border-bottom:1px solid #dadce0;display:flex;align-items:end;gap:34px}.kg-tabs a{height:100%;display:flex;align-items:center;color:#5f6368;text-decoration:none;font-size:22px;font-weight:550;border-bottom:6px solid transparent}.kg-tabs a.active{color:#202124;border-bottom-color:#202124}.kg-content-grid{display:grid;grid-template-columns:minmax(0,1fr) 370px;gap:64px;padding:50px 6% 90px 64px}.kg-article{border:0;border-radius:0;padding:0;background:#fff}.kg-article h2{font-size:32px;margin:0 0 52px;color:#202124}.kg-article h3{font-size:19px;margin:26px 0 8px;color:#3c4043}.kg-article p{font-size:19px;line-height:1.48;color:#3c4043;margin:0 0 22px}.kg-explorer-toolbar{display:flex;align-items:center;gap:10px;margin:14px 0}.kg-explorer-toolbar button{border:1px solid #dadce0;border-radius:999px;background:#fff;padding:8px 14px;font:inherit;font-size:15px}.kg-explorer-toolbar span{font-size:14px;color:#5f6368}.kg-article .table-shell{border-color:#dadce0;border-radius:8px;max-height:420px}.kg-article table{font-size:14px}.kg-article th{background:#f8f9fa;color:#5f6368}.kg-meta{border:0;border-radius:0;padding:0;background:#fff}.kg-meta section{border-bottom:1px solid #f1f3f4;padding:0 0 28px;margin-bottom:28px}.kg-meta h2{font-size:22px;margin:0 0 8px;color:#202124}.kg-meta strong{font-size:20px}.kg-meta p,.kg-meta a{font-size:19px;color:#5f6368}.kg-meta ul{list-style:none;margin:0;padding:0;display:grid;gap:10px}.kg-meta li{display:grid;grid-template-columns:1fr auto;gap:6px 10px;border:1px solid #dadce0;border-radius:10px;padding:10px}.kg-meta li span{font-weight:650;grid-column:1/-1}.kg-meta li strong{font-size:14px;color:#5f6368}.kg-meta li a{font-size:14px;color:#1a73e8}.kg-tags{display:flex;gap:12px;flex-wrap:wrap}.kg-tags span{border:1px solid #dadce0;border-radius:999px;padding:10px 18px;font-size:19px;color:#3c4043}.kg-discussions{list-style:none;margin:0;padding:0;display:grid;gap:10px}.kg-discussions li{border:1px solid #dadce0;border-radius:10px;padding:14px;display:flex;justify-content:space-between;gap:20px}.kg-discussions span{color:#5f6368}@media(max-width:1200px){.kg-shell{grid-template-columns:1fr}.kg-sidebar{position:static;height:auto;border-right:0;border-bottom:1px solid #dadce0}.kg-primary-nav{grid-template-columns:repeat(2,minmax(0,1fr))}.kg-hero{grid-template-columns:1fr;padding:32px 24px 0}.kg-hero-actions,.kg-cover{grid-column:1;grid-row:auto;justify-self:start}.kg-tabs,.kg-topbar,.kg-content-grid{padding-left:24px;padding-right:24px}.kg-content-grid{grid-template-columns:1fr}.kg-author{margin-bottom:32px}}@media(max-width:720px){.kg-wordmark{font-size:34px}.kg-sidebar{padding:18px}.kg-primary-nav{grid-template-columns:1fr}.kg-topbar{height:auto;padding-top:16px;padding-bottom:16px}.kg-search{height:52px}.kg-hero h1{font-size:34px}.kg-hero-actions{gap:10px;flex-wrap:wrap}.kg-hero-actions button,.kg-hero-actions a{font-size:16px}.kg-tabs{gap:18px;overflow:auto}.kg-tabs a{font-size:18px}.kg-content-grid{gap:28px}.kg-code-popover{width:min(520px,calc(100vw - 48px));left:0;right:auto}}`;
+}
+
+function kaggleTabStyles() {
+  return `
+.kg-tab-heading{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:28px}.kg-tab-heading h2{margin:0}.kg-tab-heading button,.kg-discussion-controls button{border:1px solid #dadce0;border-radius:999px;background:#fff;padding:10px 18px;font:inherit;font-weight:700;color:#202124}.kg-tab-heading button:disabled{color:#9aa0a6;background:#f1f3f4;text-decoration:line-through;cursor:not-allowed}.kg-code-card{border:1px solid #dadce0;border-radius:12px;padding:22px;margin-bottom:18px;background:#fff}.kg-code-card span{display:inline-flex;border:1px solid #dadce0;border-radius:999px;padding:5px 10px;color:#5f6368;font-size:13px}.kg-code-card h3{font-size:22px;margin:14px 0 8px}.kg-code-card p{font-size:16px}.kg-discussion-controls{display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap}.kg-discussion-controls button.active{background:#202124;color:#fff;border-color:#202124}.kg-discussion-controls label{height:38px;border:1px solid #dadce0;border-radius:999px;display:flex;align-items:center;gap:8px;padding:0 14px;color:#9aa0a6}.kg-discussion-controls input{border:0;outline:0;font:inherit}.kg-discussion-list li{align-items:center}.kg-discussion-list p{font-size:14px;color:#5f6368;margin:6px 0 0}.kg-empty-state{border:1px dashed #dadce0;border-radius:14px;padding:48px;text-align:center;margin-bottom:22px;background:#f8f9fa}.kg-empty-state strong{display:block;font-size:24px;margin-bottom:8px}.kg-empty-state p{max-width:620px;margin:0 auto;color:#5f6368}.kg-code-page .kg-meta,.kg-discussion-page .kg-meta,.kg-suggestions-page .kg-meta{padding-top:68px}`;
 }
 
 async function write(outDir, path, contents, files) {
@@ -923,7 +1005,7 @@ export async function generateSite(config, options = {}) {
   await rm(outDir, { recursive: true, force: true });
   await mkdir(outDir, { recursive: true });
   await write(outDir, "index.html", renderHome(model), files);
-  await write(outDir, "assets/styles.css", styles() + hfSpecificStyles() + kaggleSpecificStyles(), files);
+  await write(outDir, "assets/styles.css", styles() + hfSpecificStyles() + kaggleSpecificStyles() + kaggleTabStyles(), files);
   await write(outDir, "manifest.json", JSON.stringify({ ...model, mockNotice: MOCK_NOTICE }, null, 2), files);
   for (const dataset of model.datasets) {
     await write(outDir, `hf/${dataset.slug}/index.html`, renderHf(model, dataset), files);
@@ -931,6 +1013,9 @@ export async function generateSite(config, options = {}) {
     await write(outDir, `hf/${dataset.slug}/files-and-versions/index.html`, renderHfFiles(model, dataset), files);
     await write(outDir, `hf/${dataset.slug}/community/index.html`, renderHfCommunity(model, dataset), files);
     await write(outDir, `kaggle/${dataset.slug}/index.html`, renderKaggle(model, dataset), files);
+    await write(outDir, `kaggle/${dataset.slug}/code/index.html`, renderKaggle(model, dataset, "code"), files);
+    await write(outDir, `kaggle/${dataset.slug}/discussion/index.html`, renderKaggle(model, dataset, "discussion"), files);
+    await write(outDir, `kaggle/${dataset.slug}/suggestions/index.html`, renderKaggle(model, dataset, "suggestions"), files);
     for (const file of dataset.files) {
       await copyDownload(outDir, dataset, file, options, files);
     }

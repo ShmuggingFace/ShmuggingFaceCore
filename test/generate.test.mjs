@@ -27,6 +27,9 @@ test("generateSite writes platform pages and mock notice", async () => {
   assert.ok(result.files.includes("hf/tiny-mock/files-and-versions/index.html"));
   assert.ok(result.files.includes("hf/tiny-mock/community/index.html"));
   assert.ok(result.files.includes("kaggle/tiny-mock/index.html"));
+  assert.ok(result.files.includes("kaggle/tiny-mock/code/index.html"));
+  assert.ok(result.files.includes("kaggle/tiny-mock/discussion/index.html"));
+  assert.ok(result.files.includes("kaggle/tiny-mock/suggestions/index.html"));
   assert.ok(result.files.includes("downloads/tiny-mock/data/train.csv"));
   const html = await readFile(join(outDir, "index.html"), "utf8");
   assert.match(html, /ShmuggingFace review mock/);
@@ -64,9 +67,23 @@ test("generateSite writes platform pages and mock notice", async () => {
   assert.match(kaggleHtml, /class="kg-sidebar"/);
   assert.match(kaggleHtml, /class="kg-search"/);
   assert.match(kaggleHtml, /Data Card/);
+  assert.match(kaggleHtml, /href="\/kaggle\/tiny-mock\/code\/">Code/);
+  assert.match(kaggleHtml, /href="\/kaggle\/tiny-mock\/discussion\/">Discussion/);
+  assert.match(kaggleHtml, /href="\/kaggle\/tiny-mock\/suggestions\/">Suggestions/);
   assert.match(kaggleHtml, /About Dataset/);
   assert.match(kaggleHtml, /href="\/downloads\/tiny-mock\/data\/train\.csv" download>Download/);
   assert.match(kaggleHtml, /kaggle datasets download -d dataset-team\/tiny-mock/);
+  const kaggleCodeHtml = await readFile(join(outDir, "kaggle/tiny-mock/code/index.html"), "utf8");
+  assert.match(kaggleCodeHtml, /class="active" href="\/kaggle\/tiny-mock\/code\/">Code/);
+  assert.match(kaggleCodeHtml, /New Notebook/);
+  assert.match(kaggleCodeHtml, /Download and inspect files/);
+  const kaggleDiscussionHtml = await readFile(join(outDir, "kaggle/tiny-mock/discussion/index.html"), "utf8");
+  assert.match(kaggleDiscussionHtml, /class="active" href="\/kaggle\/tiny-mock\/discussion\/">Discussion/);
+  assert.match(kaggleDiscussionHtml, /New Topic/);
+  assert.match(kaggleDiscussionHtml, /Search discussions/);
+  const kaggleSuggestionsHtml = await readFile(join(outDir, "kaggle/tiny-mock/suggestions/index.html"), "utf8");
+  assert.match(kaggleSuggestionsHtml, /class="active" href="\/kaggle\/tiny-mock\/suggestions\/">Suggestions/);
+  assert.match(kaggleSuggestionsHtml, /No suggestions yet/);
 });
 
 test("generateSite requires download backing for listed files", async () => {

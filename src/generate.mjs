@@ -176,6 +176,88 @@ function table(dataset) {
   return `<div class="table-shell"><table><thead><tr>${headers}</tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
+function kaggleDataExplorer(dataset, rowCount) {
+  const file = dataset.files.find((item) => item.path.endsWith(".csv")) || dataset.files[0] || { path: `${dataset.slug}.csv`, size: "" };
+  const columns = dataset.columns.slice(0, 10);
+  const visibleCount = Math.min(columns.length, 10);
+  const rows = dataset.rows.slice(0, 8);
+  const columnIcon = (column) => /url|link|id|name|status|pattern|color|fabric|split/i.test(column) ? "A" : "123";
+  const summaryFor = (column, index) => {
+    const values = rows.map((row) => row[column]).filter((value) => value !== undefined && value !== "");
+    const unique = new Set(values).size || Math.max(1, rowCount - index * 31);
+    if (/probability|score|temperature|rpm|funding|total|amount|size|count/i.test(column)) {
+      return `<strong>${escapeHtml(formatNumber(Math.max(unique, Math.min(rowCount, unique * 17))))}</strong><span>unique values</span>`;
+    }
+    const primary = values[0] ?? "mock";
+    const secondary = values[1] ?? "other";
+    return `<dl><dt>${escapeHtml(primary)}</dt><dd>${Math.max(6, 19 - index)}%</dd><dt>${escapeHtml(secondary)}</dt><dd>${Math.max(2, 9 - index)}%</dd><dt>Other (${escapeHtml(formatNumber(Math.max(rowCount - 1184 - index * 283, 1)))})</dt><dd>${Math.min(94, 78 + index)}%</dd></dl>`;
+  };
+  const headerCells = columns.map((column, index) => `<th>
+    <div class="kg-de-col-title"><span>${escapeHtml(columnIcon(column))}</span><strong>${escapeHtml(column)}</strong><button type="button" aria-label="Filter ${escapeHtml(column)}">≡</button></div>
+    <em>${escapeHtml(index === 0 ? "Link to Organization" : column.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()))}</em>
+  </th>`).join("");
+  const profileCells = columns.map((column, index) => `<td>${summaryFor(column, index)}</td>`).join("");
+  const bodyRows = rows.map((row) => `<tr>${columns.map((column) => `<td>${escapeHtml(row[column] ?? "-")}</td>`).join("")}</tr>`).join("");
+  return `<section class="kg-data-explorer" data-kg-explorer>
+    <div class="kg-de-main">
+      <header class="kg-de-header">
+        <h3>${escapeHtml(file.path.split("/").pop() || file.path)} <span>(${escapeHtml(file.size || "mock size")})</span></h3>
+        <div class="kg-de-actions">
+          <a href="${escapeHtml(fileHref(dataset, file))}"${file.downloadUrl ? "" : " download"} aria-label="Download ${escapeHtml(file.path)}">⇩</a>
+          <button type="button" data-kg-explorer-fullscreen aria-label="Fullscreen">⛶</button>
+          <button type="button" data-kg-explorer-collapse aria-label="Collapse summary">›</button>
+        </div>
+      </header>
+      <div class="kg-de-toolbar">
+        <div class="kg-de-modes" role="tablist" aria-label="Explorer view modes">
+          <button type="button" class="active" data-kg-mode="detail">Detail</button>
+          <button type="button" data-kg-mode="compact">Compact</button>
+          <button type="button" data-kg-mode="column">Column</button>
+        </div>
+        <button type="button" class="kg-de-column-count" data-kg-column-menu>${escapeHtml(String(visibleCount))} of ${escapeHtml(String(dataset.columns.length || visibleCount))} columns⌄</button>
+        <div class="kg-de-column-menu" data-kg-column-popover hidden>
+          ${dataset.columns.map((column, index) => `<label><input type="checkbox" ${index < visibleCount ? "checked" : ""} disabled> ${escapeHtml(column)}</label>`).join("")}
+        </div>
+      </div>
+      <div class="kg-de-table-wrap">
+        <table class="kg-de-table">
+          <thead><tr>${headerCells}</tr></thead>
+          <tbody class="kg-de-profile"><tr>${profileCells}</tr></tbody>
+          <tbody>${bodyRows}</tbody>
+        </table>
+      </div>
+    </div>
+    <aside class="kg-de-side" data-kg-explorer-side>
+      <h3>Data Explorer</h3>
+      <a href="${escapeHtml(fileHref(dataset, file))}"${file.downloadUrl ? "" : " download"}>Version 1 <span>(${escapeHtml(file.size || "mock size")})</span></a>
+      <div class="kg-de-file"><span>▥</span>${escapeHtml(file.path.split("/").pop() || file.path)}</div>
+      <section>
+        <h4>Summary</h4>
+        <p><span>▸</span><strong>1 file</strong></p>
+        <p><span>▸</span><strong>${escapeHtml(String(dataset.columns.length || visibleCount))} columns</strong></p>
+        <p><span>▸</span><strong>${escapeHtml(formatNumber(rowCount))} rows</strong></p>
+      </section>
+    </aside>
+  </section>
+  <script>
+    (() => {
+      const explorer = document.querySelector("[data-kg-explorer]");
+      if (!explorer) return;
+      const setMode = (mode) => {
+        explorer.dataset.mode = mode;
+        explorer.querySelectorAll("[data-kg-mode]").forEach((button) => button.classList.toggle("active", button.dataset.kgMode === mode));
+      };
+      explorer.querySelectorAll("[data-kg-mode]").forEach((button) => button.addEventListener("click", () => setMode(button.dataset.kgMode)));
+      explorer.querySelector("[data-kg-column-menu]")?.addEventListener("click", () => {
+        const popover = explorer.querySelector("[data-kg-column-popover]");
+        popover?.toggleAttribute("hidden");
+      });
+      explorer.querySelector("[data-kg-explorer-collapse]")?.addEventListener("click", () => explorer.classList.toggle("summary-collapsed"));
+      explorer.querySelector("[data-kg-explorer-fullscreen]")?.addEventListener("click", () => explorer.classList.toggle("fullscreen"));
+    })();
+  </script>`;
+}
+
 function files(dataset) {
   return dataset.files
     .map((file) => {
@@ -938,13 +1020,6 @@ function renderKaggleTabContent(dataset, activeTab, { rowCount, fileRows, tags, 
       <p>${escapeHtml(dataset.description)}</p>
       <h3>Objective</h3>
       <p>This deliberately fake release is large enough to exercise row previews, file downloads, metadata, and review copy before a real upload to Kaggle.</p>
-      <h3>Data Explorer</h3>
-      <div class="kg-explorer-toolbar">
-        <button type="button">Data</button>
-        <button type="button">Summary</button>
-        <span>${escapeHtml(formatNumber(rowCount))} rows · ${escapeHtml(String(dataset.columns.length))} columns</span>
-      </div>
-      ${table(dataset)}
     </article>
     <aside class="kg-meta">
       <section><h2>Usability</h2><strong>${escapeHtml(dataset.kaggleUsability)}</strong></section>
@@ -953,6 +1028,10 @@ function renderKaggleTabContent(dataset, activeTab, { rowCount, fileRows, tags, 
       <section><h2>Files</h2><ul>${fileRows}</ul></section>
       <section><h2>Tags</h2><div class="kg-tags">${tags}</div></section>
     </aside>
+    <section class="kg-explorer-span">
+      <h2>Data Explorer</h2>
+      ${kaggleDataExplorer(dataset, rowCount)}
+    </section>
   </section>`;
 }
 
@@ -974,6 +1053,11 @@ function kaggleSpecificStyles() {
 function kaggleTabStyles() {
   return `
 .kg-tab-heading{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:28px}.kg-tab-heading h2{margin:0}.kg-tab-heading button,.kg-discussion-controls button{border:1px solid #dadce0;border-radius:999px;background:#fff;padding:10px 18px;font:inherit;font-weight:700;color:#202124}.kg-tab-heading button:disabled{color:#9aa0a6;background:#f1f3f4;text-decoration:line-through;cursor:not-allowed}.kg-code-card{border:1px solid #dadce0;border-radius:12px;padding:22px;margin-bottom:18px;background:#fff}.kg-code-card span{display:inline-flex;border:1px solid #dadce0;border-radius:999px;padding:5px 10px;color:#5f6368;font-size:13px}.kg-code-card h3{font-size:22px;margin:14px 0 8px}.kg-code-card p{font-size:16px}.kg-discussion-controls{display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap}.kg-discussion-controls button.active{background:#202124;color:#fff;border-color:#202124}.kg-discussion-controls label{height:38px;border:1px solid #dadce0;border-radius:999px;display:flex;align-items:center;gap:8px;padding:0 14px;color:#9aa0a6}.kg-discussion-controls input{border:0;outline:0;font:inherit}.kg-discussion-list li{align-items:center}.kg-discussion-list p{font-size:14px;color:#5f6368;margin:6px 0 0}.kg-empty-state{border:1px dashed #dadce0;border-radius:14px;padding:48px;text-align:center;margin-bottom:22px;background:#f8f9fa}.kg-empty-state strong{display:block;font-size:24px;margin-bottom:8px}.kg-empty-state p{max-width:620px;margin:0 auto;color:#5f6368}.kg-code-page .kg-meta,.kg-discussion-page .kg-meta,.kg-suggestions-page .kg-meta{padding-top:68px}`;
+}
+
+function kaggleExplorerStyles() {
+  return `
+.kg-explorer-span{grid-column:1/-1}.kg-explorer-span>h2{font-size:32px;margin:12px 0 24px}.kg-data-explorer{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:32px;margin-top:16px}.kg-de-main{border:1px solid #dadce0;border-radius:12px;background:#fff;overflow:hidden}.kg-de-header{height:80px;display:flex;align-items:center;justify-content:space-between;gap:18px;padding:0 24px}.kg-de-header h3{margin:0;font-size:24px;line-height:1.2;color:#202124}.kg-de-header h3 span{color:#5f6368;font-weight:500}.kg-de-actions{display:flex;gap:16px;align-items:center}.kg-de-actions a,.kg-de-actions button{border:0;background:transparent;color:#3c4043;font:inherit;font-size:26px;text-decoration:none;cursor:pointer}.kg-de-toolbar{position:relative;height:72px;border-top:1px solid transparent;border-bottom:1px solid #dadce0;display:flex;align-items:end;justify-content:space-between;gap:16px;padding:0 20px}.kg-de-modes{height:100%;display:flex;align-items:end;gap:30px}.kg-de-modes button{height:100%;border:0;border-bottom:5px solid transparent;background:transparent;font:inherit;font-size:20px;color:#5f6368;padding:0;cursor:pointer}.kg-de-modes button.active{color:#202124;border-bottom-color:#202124}.kg-de-column-count{border:0;background:transparent;font:inherit;font-size:18px;color:#5f6368;padding:0 0 22px;cursor:pointer}.kg-de-column-menu{position:absolute;right:16px;top:62px;z-index:5;width:270px;max-height:280px;overflow:auto;border:1px solid #dadce0;border-radius:10px;background:#fff;box-shadow:0 16px 36px rgba(60,64,67,.24);padding:12px;display:grid;gap:8px}.kg-de-column-menu label{font-size:14px;color:#3c4043}.kg-de-table-wrap{max-height:560px;overflow:auto}.kg-de-table{min-width:1120px;border-collapse:separate;border-spacing:0;width:100%;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;color:#5f6368}.kg-de-table th,.kg-de-table td{border-right:1px solid #dadce0;border-bottom:1px solid #dadce0;min-width:190px;max-width:230px;padding:12px 14px;vertical-align:top;background:#fff}.kg-de-table th{position:sticky;top:0;z-index:2;height:92px;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;text-transform:none;color:#202124}.kg-de-col-title{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px}.kg-de-col-title span{font-size:12px;text-decoration:underline}.kg-de-col-title strong{font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.kg-de-col-title button{border:0;background:transparent;color:#5f6368;font-size:19px;cursor:pointer}.kg-de-table th em{display:block;margin-top:12px;color:#5f6368;font-style:normal;font-weight:500;font-size:14px}.kg-de-profile td{position:sticky;top:92px;z-index:1;height:112px;background:#fff;box-shadow:0 9px 16px rgba(60,64,67,.2)}.kg-de-profile strong{display:block;text-align:center;font-size:22px;color:#202124}.kg-de-profile span{display:block;text-align:center;color:#202124;font-family:Inter,ui-sans-serif,system-ui}.kg-de-profile dl{display:grid;grid-template-columns:1fr auto;gap:2px 10px;margin:0}.kg-de-profile dt{font-weight:800;color:#202124;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.kg-de-profile dd{margin:0;font-weight:800;color:#202124}.kg-de-profile dt:last-of-type,.kg-de-profile dd:last-of-type{background:#e8eaed;color:#5f6368}.kg-de-side{padding-top:2px}.kg-de-side h3{font-size:24px;margin:0 0 12px}.kg-de-side>a{display:inline-block;color:#202124;font-size:18px;text-decoration:underline;margin-bottom:22px}.kg-de-side>a span{color:#5f6368}.kg-de-file{height:42px;background:#f1f3f4;display:flex;align-items:center;gap:12px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:18px;margin-bottom:34px}.kg-de-file span{font-size:22px}.kg-de-side section{border-top:1px solid #dadce0;border-bottom:1px solid #dadce0;padding:28px 0}.kg-de-side h4{font-size:22px;margin:0 0 18px}.kg-de-side p{display:flex;align-items:center;gap:14px;margin:22px 0;color:#5f6368}.kg-de-side strong{font-size:20px;color:#5f6368}.kg-data-explorer[data-mode=compact] .kg-de-profile,.kg-data-explorer[data-mode=compact] .kg-de-table th em{display:none}.kg-data-explorer[data-mode=compact] .kg-de-table th{height:52px}.kg-data-explorer[data-mode=compact] .kg-de-table td{padding:8px 12px;min-width:160px}.kg-data-explorer[data-mode=column] .kg-de-table th:not(:first-child),.kg-data-explorer[data-mode=column] .kg-de-table td:not(:first-child){display:none}.kg-data-explorer[data-mode=column] .kg-de-table{min-width:520px}.kg-data-explorer[data-mode=column] .kg-de-table th,.kg-data-explorer[data-mode=column] .kg-de-table td{max-width:none;width:100%}.kg-data-explorer.summary-collapsed{grid-template-columns:minmax(0,1fr) 0;gap:0}.kg-data-explorer.summary-collapsed .kg-de-side{display:none}.kg-data-explorer.fullscreen{position:fixed;z-index:50;inset:24px;background:#fff;padding:24px;grid-template-columns:minmax(0,1fr) 300px}.kg-data-explorer.fullscreen .kg-de-table-wrap{max-height:calc(100vh - 220px)}@media(max-width:1200px){.kg-data-explorer{grid-template-columns:1fr}.kg-de-side{display:none}.kg-data-explorer.fullscreen{inset:10px;grid-template-columns:1fr}}@media(max-width:720px){.kg-de-header{height:auto;align-items:flex-start;padding:18px;flex-direction:column}.kg-de-toolbar{height:auto;align-items:flex-start;padding:0 16px;flex-direction:column}.kg-de-modes{height:58px}.kg-de-column-count{padding:0 0 14px}.kg-de-table th,.kg-de-table td{min-width:160px}.kg-de-header h3{font-size:20px}}`;
 }
 
 async function write(outDir, path, contents, files) {
@@ -1005,7 +1089,7 @@ export async function generateSite(config, options = {}) {
   await rm(outDir, { recursive: true, force: true });
   await mkdir(outDir, { recursive: true });
   await write(outDir, "index.html", renderHome(model), files);
-  await write(outDir, "assets/styles.css", styles() + hfSpecificStyles() + kaggleSpecificStyles() + kaggleTabStyles(), files);
+  await write(outDir, "assets/styles.css", styles() + hfSpecificStyles() + kaggleSpecificStyles() + kaggleTabStyles() + kaggleExplorerStyles(), files);
   await write(outDir, "manifest.json", JSON.stringify({ ...model, mockNotice: MOCK_NOTICE }, null, 2), files);
   for (const dataset of model.datasets) {
     await write(outDir, `hf/${dataset.slug}/index.html`, renderHf(model, dataset), files);

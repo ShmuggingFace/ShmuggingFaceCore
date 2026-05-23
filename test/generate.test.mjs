@@ -66,12 +66,14 @@ test("generateSite writes platform pages and mock notice", async () => {
   assert.match(kaggleHtml, /class="kg-wordmark"[^>]*>shmaggle</);
   assert.match(kaggleHtml, /class="kg-sidebar"/);
   assert.match(kaggleHtml, /class="kg-search"/);
+  assert.match(kaggleHtml, /kg-sticky-repo-header/);
   assert.match(kaggleHtml, /Data Card/);
   assert.match(kaggleHtml, /href="\/kaggle\/tiny-mock\/code\/">Code/);
   assert.match(kaggleHtml, /href="\/kaggle\/tiny-mock\/discussion\/">Discussion/);
   assert.match(kaggleHtml, /href="\/kaggle\/tiny-mock\/suggestions\/">Suggestions/);
   assert.match(kaggleHtml, /About Dataset/);
   assert.match(kaggleHtml, /data-kg-explorer/);
+  assert.match(kaggleHtml, /kg-de-about/);
   assert.match(kaggleHtml, /Detail/);
   assert.match(kaggleHtml, /Compact/);
   assert.match(kaggleHtml, /Column/);
@@ -87,6 +89,8 @@ test("generateSite writes platform pages and mock notice", async () => {
   assert.match(kaggleHtml, /kg-metadata-person/);
   assert.match(kaggleHtml, /href="\/downloads\/tiny-mock\/data\/train\.csv" download>.*Download/);
   assert.match(kaggleHtml, /kaggle datasets download -d dataset-team\/tiny-mock/);
+  assert.match(kaggleHtml, /kg-social-heading/);
+  assert.match(kaggleHtml, /kg-survey-pills/);
   const kaggleCodeHtml = await readFile(join(outDir, "kaggle/tiny-mock/code/index.html"), "utf8");
   assert.match(kaggleCodeHtml, /class="active" href="\/kaggle\/tiny-mock\/code\/">Code/);
   assert.match(kaggleCodeHtml, /New Notebook/);

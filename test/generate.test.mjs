@@ -75,6 +75,9 @@ test("generateSite writes platform pages and mock notice", async () => {
   assert.match(kaggleHtml, /Detail/);
   assert.match(kaggleHtml, /Compact/);
   assert.match(kaggleHtml, /Column/);
+  assert.match(kaggleHtml, /data-kg-column-count/);
+  assert.match(kaggleHtml, /data-kg-column-toggle="0"/);
+  assert.doesNotMatch(kaggleHtml, /data-kg-column-toggle="0"[^>]*disabled/);
   assert.match(kaggleHtml, /Data Explorer/);
   assert.match(kaggleHtml, /1 file/);
   assert.match(kaggleHtml, /href="\/downloads\/tiny-mock\/data\/train\.csv" download>.*Download/);

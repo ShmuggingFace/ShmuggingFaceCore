@@ -121,6 +121,23 @@ function layout({ title, body, site, nav = "" }) {
 </html>`;
 }
 
+function kaggleLayout({ title, body }) {
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${escapeHtml(title)}</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ctext y='50' font-size='50'%3ES%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/assets/styles.css">
+</head>
+<body class="kg-body">
+  <div class="mock-ribbon">${escapeHtml(MOCK_NOTICE)}</div>
+  ${body}
+</body>
+</html>`;
+}
+
 function renderHome(model) {
   const primary = model.datasets[0];
   const datasetLinks = model.datasets
@@ -743,33 +760,123 @@ function renderHfDataStudio(model, dataset) {
 }
 
 function renderKaggle(model, dataset) {
-  const nav = datasetSelect(model.datasets, dataset.slug, "kaggle");
-  const body = `<section class="repo-header kaggle">
-    <p class="eyebrow">Dataset page mock</p>
-    <h1>${escapeHtml(dataset.title)}</h1>
-    <p>${escapeHtml(dataset.subtitle)}</p>
-    <div class="kaggle-actions"><button>New Notebook</button><button>Download</button><button>Copy API command</button></div>
-  </section>
-  <section class="tabs kaggle-tabs">
-    <a class="active">Overview</a><a>Data</a><a>Code</a><a>Discussion</a><a>Activity</a>
-  </section>
-  <section class="two-col">
-    <article>
-      <h2>About this mock dataset</h2>
-      <p>${escapeHtml(dataset.description)}</p>
-      <h3>Data Explorer</h3>
-      <div class="viewer-toolbar"><button>train.csv</button><button>sample_submission.csv</button><span>${escapeHtml(dataset.rows.length)} preview rows</span></div>
-      ${table(dataset)}
-    </article>
-    <aside>
-      <div class="score-card"><span>Usability</span><strong>${escapeHtml(dataset.kaggleUsability)}</strong><em>${escapeHtml(dataset.kaggleMedals)} mock medal</em></div>
-      <h3>Files</h3>
-      <ul class="file-list">${files(dataset)}</ul>
-      <h3>Metadata</h3>
-      <dl><dt>License</dt><dd>${escapeHtml(dataset.license)}</dd><dt>Task</dt><dd>${escapeHtml(dataset.task)}</dd><dt>Updated</dt><dd>${escapeHtml(dataset.updated)}</dd></dl>
+  const rowCount = Math.max(dataset.rowCount, dataset.rows.length, 1);
+  const firstFile = dataset.files.find((file) => !file.downloadUrl) || dataset.files[0];
+  const downloadHref = firstFile ? fileHref(dataset, firstFile) : "/manifest.json";
+  const download = firstFile?.downloadUrl ? "" : " download";
+  const tags = (dataset.tags.length ? dataset.tags : [dataset.task, dataset.language, "Mock dataset"])
+    .slice(0, 6)
+    .map((tag) => `<span>${escapeHtml(tag)}</span>`)
+    .join("");
+  const sidebarItems = model.datasets
+    .slice(0, 5)
+    .map((item) => `<a href="/kaggle/${item.slug}/"><span class="kg-thumb">${escapeHtml(item.title.slice(0, 1))}</span>${escapeHtml(item.title)}</a>`)
+    .join("");
+  const fileRows = dataset.files
+    .map((file) => {
+      const href = fileHref(dataset, file);
+      const fileDownload = file.downloadUrl ? "" : " download";
+      const label = file.downloadUrl ? `Open ${file.storage || "storage"}` : "Download";
+      return `<li><span>${escapeHtml(file.path)}</span><strong>${escapeHtml(file.size || "")}</strong><a href="${escapeHtml(href)}"${fileDownload}>${escapeHtml(label)}</a></li>`;
+    })
+    .join("");
+  const codeSnippet = `kaggle datasets download -d ${dataset.owner}/${dataset.slug}\npython - <<'PY'\nimport pandas as pd\nrows = pd.read_csv("data/train.csv")\nprint(rows.describe(include="all"))\nPY`;
+  const body = `<div class="kg-shell" data-kaggle-page="${escapeHtml(dataset.slug)}">
+    <aside class="kg-sidebar">
+      <div class="kg-sidebar-top"><button type="button" aria-label="Menu">☰</button><a class="kg-wordmark" href="/">shmaggle</a></div>
+      <a class="kg-create" href="/manifest.json"><span>＋</span>Create</a>
+      <nav class="kg-primary-nav">
+        <a href="/"><span>⌖</span>Home</a>
+        <a href="/manifest.json"><span>♕</span>Competitions</a>
+        <a href="/manifest.json"><span>▥</span>Benchmarks</a>
+        <a href="/manifest.json"><span>☷</span>Game Arena</a>
+        <a href="/manifest.json"><span>&lt;&gt;</span>Data Hub</a>
+        <a href="/manifest.json"><span>☰</span>More</a>
+      </nav>
+      <section class="kg-work">
+        <h2>Your Work</h2>
+        <h3>Viewed</h3>
+        ${sidebarItems}
+        <h3>Bookmarks</h3>
+        <a href="/kaggle/${dataset.slug}/"><span class="kg-thumb">S</span>${escapeHtml(dataset.title)}</a>
+      </section>
     </aside>
-  </section>`;
-  return layout({ title: `${dataset.title} | Shmaggle`, body, site: model.site, nav });
+    <main class="kg-main">
+      <header class="kg-topbar">
+        <label class="kg-search"><span>⌕</span><input aria-label="Search Shmaggle" placeholder="Search"></label>
+        <a class="kg-avatar" href="/manifest.json">😏</a>
+      </header>
+      <section class="kg-hero">
+        <div class="kg-dataset-copy">
+          <p class="kg-author"><span class="kg-avatar small">😏</span><strong>${escapeHtml(dataset.contactName || dataset.owner)}</strong> · UPDATED ${escapeHtml(dataset.updated)} AGO</p>
+          <h1>${escapeHtml(dataset.title)}</h1>
+          <p>${escapeHtml(dataset.subtitle || dataset.description)}</p>
+        </div>
+        <div class="kg-hero-actions">
+          <button type="button" class="kg-score" aria-label="Mock upvote"><span>▲</span><strong>${escapeHtml(dataset.likes || "85")}</strong></button>
+          <button type="button" data-kg-code>&lt;&gt; Code</button>
+          <a class="kg-download" href="${escapeHtml(downloadHref)}"${download}>⇩ Download</a>
+          <button type="button" class="kg-medal" aria-label="${escapeHtml(dataset.kaggleMedals)} mock medal"></button>
+          <button type="button" data-kg-more aria-label="More actions">⋮</button>
+          <div class="kg-code-popover" data-kg-code-popover hidden>
+            <strong>Copy API command</strong>
+            <pre><code>${escapeHtml(codeSnippet)}</code></pre>
+          </div>
+          <div class="kg-more-popover" data-kg-more-popover hidden>
+            <button type="button" disabled>Report dataset</button>
+            <button type="button" disabled>Request edit access</button>
+            <button type="button" disabled>Add to collection</button>
+          </div>
+        </div>
+        <div class="kg-cover" aria-label="Mock dataset cover"><strong>${escapeHtml(dataset.title)}</strong><span>${escapeHtml(formatNumber(rowCount))} rows</span></div>
+      </section>
+      <nav class="kg-tabs" aria-label="Dataset tabs">
+        <a class="active" href="/kaggle/${dataset.slug}/">Data Card</a>
+        <a href="#code">Code (${escapeHtml(String(dataset.files.length || 1))})</a>
+        <a href="#discussion">Discussion (${escapeHtml(String(dataset.discussions.length || 1))})</a>
+        <a href="#suggestions">Suggestions (0)</a>
+      </nav>
+      <section class="kg-content-grid">
+        <article class="kg-article">
+          <h2>About Dataset</h2>
+          <p>${escapeHtml(dataset.description)}</p>
+          <h3>Objective</h3>
+          <p>This deliberately fake release is large enough to exercise row previews, file downloads, metadata, and review copy before a real upload to Kaggle.</p>
+          <h3>Data Explorer</h3>
+          <div class="kg-explorer-toolbar">
+            <button type="button">Data</button>
+            <button type="button">Summary</button>
+            <span>${escapeHtml(formatNumber(rowCount))} rows · ${escapeHtml(String(dataset.columns.length))} columns</span>
+          </div>
+          ${table(dataset)}
+          <h3 id="code">Code</h3>
+          <pre class="kg-code-block"><code>${escapeHtml(codeSnippet)}</code></pre>
+          <h3 id="discussion">Discussion</h3>
+          <ul class="kg-discussions">
+            ${(dataset.discussions.length ? dataset.discussions : ["Does the mock preview communicate the release shape clearly?"]).map((item, index) => `<li><strong>${escapeHtml(item.title || item)}</strong><span>${index + 1} replies</span></li>`).join("")}
+          </ul>
+        </article>
+        <aside class="kg-meta">
+          <section><h2>Usability</h2><strong>${escapeHtml(dataset.kaggleUsability)}</strong></section>
+          <section><h2>License</h2><a href="/manifest.json">${escapeHtml(dataset.license)}</a></section>
+          <section><h2>Expected update frequency</h2><p>Never</p></section>
+          <section><h2>Files</h2><ul>${fileRows}</ul></section>
+          <section><h2>Tags</h2><div class="kg-tags">${tags}</div></section>
+        </aside>
+      </section>
+    </main>
+  </div>
+  <script>
+    const page = document.querySelector("[data-kaggle-page]");
+    const toggle = (button, panel) => button?.addEventListener("click", () => {
+      const wasHidden = panel?.hasAttribute("hidden");
+      page.querySelectorAll("[data-kg-code-popover],[data-kg-more-popover]").forEach((item) => item.setAttribute("hidden", ""));
+      if (wasHidden) panel?.removeAttribute("hidden");
+    });
+    toggle(page.querySelector("[data-kg-code]"), page.querySelector("[data-kg-code-popover]"));
+    toggle(page.querySelector("[data-kg-more]"), page.querySelector("[data-kg-more-popover]"));
+  </script>`;
+  return kaggleLayout({ title: `${dataset.title} | Shmaggle`, body });
 }
 
 function styles() {
@@ -780,6 +887,11 @@ function hfSpecificStyles() {
   return `
 body{background:#fff;color:#111827}.mock-ribbon{background:#111827;color:#fff;padding:7px 16px;font-size:14px;font-weight:700}.hf-topbar{position:sticky;top:0;height:56px;padding:0 6%;gap:14px;justify-content:flex-start;flex-wrap:nowrap;border-bottom:1px solid #e5e7eb;box-shadow:0 1px 4px rgba(15,23,42,.05)}.brand{font-size:20px;color:#111827;white-space:nowrap}.brand-mark{font-size:28px}.global-search{width:min(420px,32vw);height:40px;border:1px solid #d8dee8;border-radius:9px;display:flex;align-items:center;gap:8px;padding:0 12px;color:#9aa3b2;background:#fff}.global-search input{border:0;outline:0;width:100%;font:inherit;font-size:15px;color:#111827}.global-search input::placeholder{color:#8b95a5}.global-nav{margin-left:auto;gap:14px;flex-wrap:nowrap}.global-nav a{font-weight:650;color:#111827;font-size:14px;white-space:nowrap}.global-nav strong{font-size:10px;color:#2563eb;background:#dbeafe;border-radius:4px;padding:2px 4px}.global-nav .avatar{width:30px;height:30px;border-radius:999px;display:grid;place-items:center;border:1px solid #d8dee8;padding:0;flex:0 0 auto}main{max-width:none;padding:0}.hf-repo-hero{padding:54px 6% 34px;background:#fff;border-bottom:1px solid #eef0f4}.hf-title-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.hf-title-row h1{margin:0 12px 0 0;font-size:26px;line-height:1.25;font-weight:750;letter-spacing:0;display:flex;align-items:center;gap:8px}.hf-title-row h1 span{color:#98a1b2;font-weight:750}.hf-title-row h1 a{color:#374151;text-decoration:none;font-weight:450}.hf-title-row h1 strong{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:27px}.hf-muted-icon{font-size:17px;color:#c6ccd7}.copy-button{border:0;background:transparent;color:#6b7280;font-size:16px}.small-button,.count-pill{border:1px solid #d8dee8;background:#fff;border-radius:7px;padding:7px 10px;font:inherit;font-size:14px;color:#536073}.count-pill{background:#f8fafc}.hf-meta-grid{display:flex;gap:14px 20px;flex-wrap:wrap;margin-top:18px;max-width:1420px}.meta-line{display:flex;align-items:center;gap:8px;color:#98a1b2}.meta-line span{font-size:14px}.meta-line a{display:inline-flex;align-items:center;min-height:34px;padding:6px 12px;border:1px solid #e3e7ee;border-radius:9px;background:#fff;color:#374151;text-decoration:none;box-shadow:0 4px 12px rgba(15,23,42,.04);font-size:14px}.hf-tabs{height:58px;padding:0 6%;display:flex;align-items:end;gap:22px;border-bottom:1px solid #e5e7eb;background:#fff;overflow:auto}.hf-tabs a{height:100%;display:flex;align-items:center;gap:7px;color:#4b5563;text-decoration:none;font-size:17px;font-weight:520;white-space:nowrap;border-bottom:3px solid transparent}.hf-tabs a.active{color:#111827;font-weight:760;border-bottom-color:#111827}.hf-tabs span{font-size:11px;border:1px solid #e5e7eb;border-radius:7px;padding:1px 5px;color:#4f46e5}.hf-tabs strong{font-size:12px;color:#fff;background:#111827;border-radius:6px;padding:1px 5px}.hf-main-grid{display:grid;grid-template-columns:minmax(0,1fr) 530px;gap:0;max-width:1800px;margin:0 auto}.hf-content{border:0;border-radius:0;padding:32px 32px 56px 6%;background:#fff}.hf-sidebar{border:0;border-left:1px solid #e5e7eb;border-radius:0;padding:32px 6% 56px 32px;background:#fff}.dataset-viewer{border:1px solid #d8dee8;border-radius:10px;box-shadow:0 2px 8px rgba(15,23,42,.06);overflow:hidden;background:#fff}.dataset-viewer header{height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;border-bottom:1px solid #e5e7eb;gap:12px}.dataset-viewer h2{margin:0;font-size:18px;white-space:nowrap}.viewer-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}.viewer-actions a{color:#8b95a5;font-size:13px}.viewer-actions button,.sidebar-actions button{border:1px solid #d8dee8;background:#f8fafc;border-radius:7px;padding:7px 10px;font:inherit;font-size:13px;color:#374151}.viewer-splits{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid #e5e7eb}.viewer-splits button{min-height:72px;border:0;border-right:1px solid #e5e7eb;background:#fff;text-align:left;padding:12px 16px;display:grid;grid-template-columns:1fr auto;gap:4px 10px;font:inherit}.viewer-splits button:last-child{border-right:0}.viewer-splits span{grid-column:1/-1;color:#687386;font-size:14px}.viewer-splits strong{font-size:15px}.viewer-splits em{font-style:normal;font-size:22px;align-self:center}.viewer-menu-row{display:grid;grid-template-columns:1fr 1fr;background:#fbfcfe;border-bottom:1px solid #e5e7eb}.viewer-menu{padding:10px 16px;display:flex;gap:8px;flex-wrap:wrap}.viewer-menu+ .viewer-menu{border-left:1px solid #e5e7eb}.viewer-menu button{border:1px solid #d8dee8;border-radius:999px;background:#fff;padding:6px 10px;font:inherit;font-size:13px}.viewer-search{height:48px;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;gap:10px;padding:0 16px;color:#98a1b2}.viewer-search input{border:0;outline:0;width:100%;font:inherit;font-size:16px}.viewer-panels{border-bottom:1px solid #e5e7eb}.viewer-panel{padding:12px 16px;background:#f8fafc;color:#374151;font-size:13px}.viewer-panel code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}.viewer-column-profile{padding:14px 16px;border-bottom:1px solid #e5e7eb;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}.viewer-column-profile strong{display:block;font-size:15px}.viewer-column-profile span{color:#7b8494;font-size:14px;font-style:italic}.mini-histogram{height:42px;display:flex;align-items:end;gap:4px;margin-top:8px}.mini-histogram i{display:block;width:14px;background:#98a1b2;border-radius:2px 2px 0 0}.viewer-column-profile small{display:flex;width:176px;justify-content:space-between;color:#8b95a5}.hf-row-preview{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:15px;color:#1f2937}.preview-row{padding:14px 16px;border-bottom:1px solid #e5e7eb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.preview-heading{background:#fbfcfe}.viewer-pagination{height:50px;display:flex;align-items:center;justify-content:center;gap:18px;color:#6b7280;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;border-top:1px solid #e5e7eb}.viewer-pagination button{border:0;background:transparent;color:#6b7280;font:inherit;cursor:pointer}.viewer-pagination button.active{border:1px solid #d8dee8;border-radius:10px;padding:6px 12px;color:#111827;background:#fff}.viewer-status{margin:0;padding:8px 16px;border-top:1px solid #e5e7eb;color:#687386;font-size:13px}.hf-card-markdown{margin-top:54px}.hf-card-markdown h2{font-size:24px;color:#263244}.hf-card-markdown p{font-size:16px;line-height:1.6;color:#374151}.sidebar-action-shell{position:relative;border-bottom:1px solid #eef0f4;padding-bottom:26px}.sidebar-actions{display:flex;gap:10px}.sidebar-actions .primary-action{background:#030712;color:#fff;border-color:#030712;min-width:210px;font-weight:700}.sidebar-popover{position:absolute;right:0;top:58px;z-index:4;width:min(460px,100%);border:1px solid #d8dee8;border-radius:10px;background:#fff;box-shadow:0 18px 40px rgba(15,23,42,.18);padding:16px}.sidebar-popover strong{display:block;font-size:17px;margin-bottom:12px}.code-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}.code-tabs button{border:1px solid #d8dee8;border-radius:7px;background:#fff;padding:7px 10px;font:inherit;font-size:13px}.code-tabs button.active{background:#111827;color:#fff;border-color:#111827}.sidebar-popover pre{margin:0;border:1px solid #e5e7eb;border-radius:8px;background:#f8fafc;padding:12px;overflow:auto}.sidebar-popover code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:13px;white-space:pre}.locked-popover{background:repeating-linear-gradient(135deg,#fff,#fff 12px,#f8fafc 12px,#f8fafc 24px)}.locked-popover p{margin:0;color:#687386;line-height:1.45}.more-popover{width:260px;display:grid;gap:8px}.more-popover button{border:1px solid #e5e7eb;border-radius:7px;background:#f3f4f6;color:#9aa3b2;padding:9px 10px;text-align:left;font:inherit;text-decoration:line-through;cursor:not-allowed}.downloads-row{height:88px;border-bottom:1px solid #eef0f4;display:flex;align-items:center;justify-content:space-between;gap:20px}.downloads-row span{color:#667085;font-size:15px}.downloads-row span:after{content:"";display:inline-block;width:150px;border-bottom:1px dotted #d8dee8;margin-left:16px;vertical-align:middle}.downloads-row strong{font-size:19px}.hf-info-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;border-bottom:1px solid #eef0f4;padding:26px 0 28px}.hf-info-grid div{border:1px solid #e5e7eb;border-radius:9px;padding:10px 12px}.hf-info-grid dt{font-size:13px;color:#98a1b2;font-weight:650}.hf-info-grid dd{font-size:14px;color:#111827;margin-top:4px}.hf-info-grid a{color:#111827;text-decoration:none}.hf-info-grid a:hover{text-decoration:underline}.hf-side-section{border-bottom:1px solid #eef0f4;padding:24px 0}.hf-side-section h3{font-size:18px;margin:0 0 14px;color:#1f2937}.hf-files{list-style:none;margin:0;padding:0;display:grid;gap:10px}.hf-files li{border:1px solid #e5e7eb;border-radius:10px;padding:11px 12px;display:grid;grid-template-columns:1fr auto;gap:5px 10px}.hf-files span{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-weight:700}.hf-files strong,.hf-files em,.hf-files a{font-size:13px;color:#8b95a5}.hf-model-list{list-style:none;margin:0;padding:0;display:grid;gap:12px}.hf-model-list li{border:1px solid #e5e7eb;border-radius:10px;padding:12px;box-shadow:0 1px 4px rgba(15,23,42,.04)}.hf-model-list strong{display:block;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.hf-model-list span{display:block;color:#98a1b2;font-size:13px;margin-top:5px}.hf-compact-header{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:0 6%;height:58px;border-bottom:1px solid #e5e7eb;background:#fff;overflow:hidden}.hf-compact-header .hf-title-row{min-width:0;flex:1;flex-wrap:nowrap;overflow:hidden}.hf-compact-header .hf-title-row h1{font-size:19px;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.hf-compact-header .hf-title-row h1 strong{font-size:20px}.hf-compact-header .hf-title-row .small-button,.hf-compact-header .hf-title-row .count-pill{flex:0 0 auto}.hf-compact-header .hf-tabs{height:100%;padding:0;border-bottom:0;flex:0 0 auto;align-items:end}.hf-compact-header .hf-tabs a{font-size:16px}.data-studio-layout{display:grid;grid-template-columns:minmax(0,2fr) minmax(420px,1fr);gap:16px;padding:16px;background:#fff}.studio-viewer-column,.studio-agent-column{min-height:calc(100vh - 170px)}.studio-viewer-column .dataset-viewer{height:100%;border-radius:8px}.studio-dataset-viewer header{display:none}.studio-dataset-viewer .viewer-splits{border-top:0}.studio-dataset-viewer .hf-row-preview{font-size:14px}.studio-dataset-viewer .preview-row{padding:13px 14px}.studio-panel-actions{display:flex;gap:6px;margin-left:auto}.studio-panel-actions button{border:1px solid #d8dee8;background:#fff;border-radius:7px;padding:5px 8px;font:inherit}.studio-agent-column{position:relative;border:1px solid #d8dee8;border-radius:8px;background:#fff;padding:0;display:grid;grid-template-rows:auto 1fr auto;box-shadow:0 1px 4px rgba(15,23,42,.04)}.studio-agent-tabs{height:54px;display:flex;justify-content:center;gap:30px;border-bottom:1px solid #e5e7eb}.studio-agent-tabs button{border:0;background:transparent;font:inherit;color:#536073;padding:0 8px;border-bottom:3px solid transparent}.studio-agent-tabs button.active{color:#111827;font-weight:750;border-bottom-color:#111827}.studio-agent-tabs span{background:#e5e7eb;border-radius:5px;padding:2px 7px;font-size:12px;font-weight:800}.studio-agent-body{display:grid;place-items:center;padding:26px}.studio-agent-body pre{width:100%;align-self:start;margin:0;border:1px solid #e5e7eb;border-radius:8px;background:#f8fafc;padding:16px;overflow:auto}.studio-agent-body code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:13px}.studio-agent-empty{text-align:center;max-width:560px;color:#687386}.studio-agent-empty strong{display:block;color:#111827;font-size:18px;margin-top:12px}.studio-agent-empty p{margin:10px 0 20px}.studio-agent-icon{width:42px;height:42px;border-radius:14px;background:#fee2e2;color:#ef4444;display:inline-grid;place-items:center;font-weight:900}.studio-split-pills{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}.studio-split-pills button{border:1px solid #e5e7eb;background:#fff;border-radius:999px;padding:9px 16px;font:inherit;color:#4b5563;box-shadow:0 1px 3px rgba(15,23,42,.04)}.studio-split-pills button.active{border-color:#111827;color:#111827;background:#f8fafc}.studio-split-pills .more-splits{border-style:dashed}.studio-chatbar{margin:14px 16px 16px;border:1px solid #e5e7eb;border-radius:10px;box-shadow:0 2px 10px rgba(15,23,42,.08);padding:12px;display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center}.studio-chatbar input{border:0;outline:0;font:inherit;color:#111827}.studio-chatbar input:disabled{background:#fff;color:#8b95a5}.studio-chatbar span{font-size:12px;color:#536073;border:1px solid #e5e7eb;border-radius:999px;padding:6px 9px}.studio-chatbar button{width:38px;height:38px;border:0;border-radius:999px;background:#a3a8b3;color:#fff;font-size:20px}.hf-files-page{max-width:1720px;margin:0 auto;padding:36px 6% 56px;background:#fff}.file-browser-toolbar{display:flex;align-items:center;gap:16px;margin-bottom:22px}.file-browser-toolbar button{border:1px solid #d8dee8;background:#fff;border-radius:10px;padding:10px 16px;font:inherit;color:#374151}.file-repo-name{font-size:20px;font-weight:650}.repo-size{border:1px solid #d8dee8;border-radius:8px;padding:6px 10px;color:#687386;background:#f8fafc}.contributors{margin-left:auto;display:flex;align-items:center;gap:7px;color:#536073}.contributors span{width:22px;height:22px;border-radius:999px;border:1px solid #fff;margin-left:-10px;background:#f8fafc;display:grid;place-items:center;font-size:12px}.contributors span:first-child{margin-left:0}.contributors strong{font-size:14px;font-weight:550}.files-menu-row{position:relative}.files-popover{position:absolute;z-index:5;right:0;top:-12px;width:260px;border:1px solid #d8dee8;border-radius:10px;background:#fff;box-shadow:0 18px 40px rgba(15,23,42,.16);padding:12px;display:grid;gap:8px}.files-popover button{border:1px solid #e5e7eb;border-radius:8px;background:#fff;padding:9px 10px;text-align:left;font:inherit}.files-popover button:disabled{color:#9aa3b2;text-decoration:line-through;background:#f3f4f6;cursor:not-allowed}.history-popover{right:210px}.history-popover strong{font-size:14px}.history-popover span{font-size:13px;color:#536073}.file-browser{border:1px solid #d8dee8;border-radius:10px;overflow:hidden;background:#fff}.commit-banner{height:56px;display:grid;grid-template-columns:auto auto auto minmax(0,1fr) auto auto;align-items:center;gap:10px;padding:0 18px;background:#fbfcfe;border-bottom:1px solid #e5e7eb}.commit-banner span{font-size:18px}.commit-banner strong{font-size:16px}.commit-banner em{font-style:normal;background:#fef3c7;color:#b45309;border-radius:6px;padding:3px 7px;font-size:12px;font-weight:750}.commit-banner code,.repo-file-row .file-message{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;color:#8b95a5}.commit-banner kbd{border:1px solid #d8dee8;border-radius:6px;padding:4px 8px;background:#fff;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}.commit-banner time,.repo-file-row .file-age{color:#8b95a5;white-space:nowrap}.repo-file-row{min-height:56px;display:grid;grid-template-columns:minmax(260px,1fr) 110px 42px minmax(260px,1fr) 150px;align-items:center;gap:12px;padding:0 18px;border-bottom:1px solid #e5e7eb}.repo-file-row:last-child{border-bottom:0}.repo-file-row.folder-row{grid-template-columns:minmax(260px,1fr) minmax(260px,1fr) 150px 42px}.file-name{font-weight:650;color:#111827;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.file-size{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;color:#8b95a5;text-align:right}.file-download{width:28px;height:28px;border:1px solid #d8dee8;border-radius:7px;display:grid;place-items:center;text-decoration:none;color:#536073}.safe-pill{display:inline-flex;align-items:center;border:1px solid #d8dee8;border-radius:6px;padding:2px 5px;color:#8b95a5;font-size:12px;font-weight:650;margin-left:5px;background:#f8fafc}.community-page{display:grid;grid-template-columns:320px minmax(0,1fr);gap:72px;max-width:1720px;margin:0 auto;padding:36px 6% 80px;background:#fff}.community-sidebar{display:flex;flex-direction:column;gap:14px;align-items:flex-start}.community-sidebar button{width:220px;border:1px solid #d8dee8;background:#f8fafc;border-radius:9px;padding:10px 14px;text-align:left;font:inherit;font-weight:700;color:#1f2937}.community-sidebar p{margin:0;color:#687386;font-size:13px}.community-sidebar h3{margin:22px 0 8px;font-size:16px}.community-sidebar a{font-size:14px;text-decoration:none;color:#111827}.community-main{min-width:0}.community-controls{display:flex;align-items:center;gap:16px;margin-bottom:24px;flex-wrap:wrap}.community-filter-tabs{display:flex;align-items:center;gap:12px}.community-filter-tabs button{border:0;background:transparent;border-radius:8px;padding:7px 10px;font:inherit;color:#536073}.community-filter-tabs button.active{background:#050505;color:#fff;font-weight:750}.community-search{height:34px;width:240px;border:1px solid #d8dee8;border-radius:999px;display:flex;align-items:center;gap:8px;padding:0 12px;color:#98a1b2;background:#fff}.community-search input{border:0;outline:0;width:100%;font:inherit;font-size:13px}.community-controls label{display:flex;align-items:center;gap:8px;color:#374151;font-size:14px}.community-controls input[type=checkbox]{width:18px;height:18px;accent-color:#111827}.community-controls>button{margin-left:auto;border:1px solid #d8dee8;background:#f8fafc;border-radius:9px;padding:9px 14px;font:inherit;color:#1f2937}.community-list{display:grid;gap:14px}.community-row{min-height:74px;border:1px solid #e5e7eb;border-radius:8px;display:grid;grid-template-columns:78px minmax(0,1fr) auto;align-items:center;background:#fff;overflow:hidden}.community-row.pull-row .community-icon{background:#ecfdf5;color:#059669}.community-row.discussion-row .community-icon{background:#f8fbff;color:#2563eb}.community-icon{height:100%;display:grid;place-items:center;font-weight:900;font-size:20px}.community-copy{padding:13px 18px}.community-copy h3{margin:0 0 7px;font-size:16px;color:#111827}.community-copy p{margin:0;color:#687386;font-size:13px}.community-copy a{color:#536073;text-decoration:underline}.community-badge{margin-right:18px;border:1px solid #e5e7eb;border-radius:7px;padding:4px 8px;color:#536073;font-size:12px;background:#fff}.community-empty{border:1px dashed #d8dee8;border-radius:10px;padding:18px;color:#687386;text-align:center}[hidden]{display:none!important}
 @media(max-width:1100px){.hf-topbar{padding:10px 20px;height:auto;flex-wrap:wrap}.global-search{order:3;width:100%}.global-nav{margin-left:0}.hf-repo-hero,.hf-tabs{padding-left:24px;padding-right:24px}.hf-main-grid{grid-template-columns:1fr}.hf-content,.hf-sidebar{padding:24px}.hf-sidebar{border-left:0;border-top:1px solid #e5e7eb}.dataset-viewer header{height:auto;align-items:flex-start;flex-direction:column;padding:14px 16px}.viewer-splits{grid-template-columns:1fr}.viewer-splits button{border-right:0;border-bottom:1px solid #e5e7eb}.hf-info-grid{grid-template-columns:1fr}}`;
+}
+
+function kaggleSpecificStyles() {
+  return `
+.kg-body{background:#fff;color:#202124;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.kg-body .mock-ribbon{position:sticky;top:0;z-index:20;background:#111827;color:#fff}.kg-shell{display:grid;grid-template-columns:350px minmax(0,1fr);min-height:calc(100vh - 34px)}.kg-sidebar{position:sticky;top:34px;align-self:start;height:calc(100vh - 34px);border-right:1px solid #dadce0;background:#fff;padding:22px 31px;overflow:auto}.kg-sidebar-top{display:flex;align-items:center;gap:28px;margin-bottom:38px}.kg-sidebar-top button{border:0;background:transparent;font-size:30px;line-height:1;cursor:pointer}.kg-wordmark{color:#20a7db;text-decoration:none;font-size:40px;line-height:1;font-weight:500;letter-spacing:-.02em}.kg-create{width:160px;height:68px;border:1px solid #dadce0;border-radius:999px;box-shadow:0 2px 8px rgba(60,64,67,.24);display:flex;align-items:center;justify-content:center;gap:14px;text-decoration:none;color:#3c4043;font-size:19px;margin-bottom:28px}.kg-create span{font-size:46px;line-height:0;color:#20a7db;font-weight:300}.kg-primary-nav{display:grid;gap:7px;border-bottom:1px solid #dadce0;padding-bottom:26px}.kg-primary-nav a,.kg-work a{height:52px;display:flex;align-items:center;gap:22px;color:#5f6368;text-decoration:none;font-size:20px;border-radius:999px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.kg-primary-nav span{width:28px;text-align:center;color:#5f6368}.kg-work{padding-top:20px}.kg-work h2{font-size:18px;margin:0 0 12px;color:#5f6368;font-weight:600}.kg-work h3{font-size:18px;color:#5f6368;margin:18px 0 8px;font-weight:500}.kg-thumb{width:28px;height:28px;border-radius:6px;background:#dff3fd;color:#20a7db;display:grid;place-items:center;font-weight:800;flex:0 0 auto}.kg-main{min-width:0;background:#fff}.kg-topbar{height:96px;display:flex;align-items:center;gap:28px;padding:0 6% 0 64px;border-bottom:0}.kg-search{height:66px;max-width:1460px;flex:1;border:1px solid #dadce0;border-radius:999px;display:flex;align-items:center;gap:18px;padding:0 32px;color:#202124}.kg-search span{font-size:36px;line-height:1}.kg-search input{border:0;outline:0;width:100%;font:inherit;font-size:19px}.kg-search input::placeholder{color:#5f6368}.kg-avatar{width:42px;height:42px;border:3px solid #20a7db;border-radius:999px;display:grid;place-items:center;text-decoration:none;background:#fff}.kg-avatar.small{width:46px;height:46px;font-size:24px;display:inline-grid;margin-right:20px;vertical-align:middle}.kg-hero{display:grid;grid-template-columns:minmax(0,1fr) auto 384px;gap:32px;padding:52px 6% 0 64px;align-items:start}.kg-author{display:flex;align-items:center;margin:0 0 88px;color:#5f6368;font-size:14px;font-weight:800;letter-spacing:.08em}.kg-author strong{color:#5f6368;text-transform:uppercase}.kg-hero h1{font-size:49px;line-height:1.22;margin:0 0 18px;color:#202124;font-weight:800;max-width:980px}.kg-hero p:not(.kg-author){font-size:21px;line-height:1.45;color:#5f6368;margin:0;max-width:990px}.kg-hero-actions{position:relative;display:flex;align-items:center;gap:22px;justify-self:end;grid-column:2/4}.kg-hero-actions button,.kg-hero-actions a{height:52px;border:1px solid #bdc1c6;border-radius:999px;background:#fff;color:#202124;text-decoration:none;font:inherit;font-size:20px;font-weight:750;padding:0 22px;display:inline-flex;align-items:center;gap:12px}.kg-score{padding:0!important;overflow:hidden}.kg-score span{height:100%;width:52px;display:grid;place-items:center;border-right:1px solid #bdc1c6}.kg-score strong{padding:0 18px}.kg-download{background:#202124!important;color:#fff!important;border-color:#202124!important}.kg-medal{width:26px!important;height:26px!important;padding:0!important;background:linear-gradient(135deg,#bd7a3b,#f4d098)!important;border:0!important}.kg-hero-actions [data-kg-more]{width:42px;padding:0!important;border:0;background:transparent;font-size:32px}.kg-code-popover,.kg-more-popover{position:absolute;right:0;top:62px;z-index:10;width:520px;border:1px solid #dadce0;border-radius:12px;background:#fff;box-shadow:0 18px 44px rgba(60,64,67,.28);padding:18px}.kg-code-popover strong{display:block;margin-bottom:12px}.kg-code-popover pre,.kg-code-block{margin:0;background:#f8f9fa;border:1px solid #e8eaed;border-radius:10px;padding:16px;overflow:auto}.kg-code-popover code,.kg-code-block code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:14px}.kg-more-popover{width:280px;display:grid;gap:8px}.kg-more-popover button{height:auto;border-radius:8px;background:#f1f3f4;color:#9aa0a6;text-decoration:line-through;cursor:not-allowed;padding:10px 12px}.kg-cover{grid-column:3;grid-row:2;min-height:194px;border-radius:16px;background:radial-gradient(circle at 18% 45%,#7c3aed 0 35px,transparent 36px),radial-gradient(circle at 48% 60%,#facc15 0 58px,transparent 59px),radial-gradient(circle at 82% 42%,#f472b6 0 34px,transparent 35px),linear-gradient(135deg,#ddb7ff,#92d5ff);padding:30px;color:#202124;display:flex;flex-direction:column;justify-content:center;box-shadow:inset 0 0 0 1px rgba(255,255,255,.35)}.kg-cover strong{font-size:28px;line-height:1.1;max-width:260px}.kg-cover span{font-size:18px;margin-top:12px;font-weight:700}.kg-tabs{height:72px;margin:30px 0 0;padding:0 6% 0 64px;border-bottom:1px solid #dadce0;display:flex;align-items:end;gap:34px}.kg-tabs a{height:100%;display:flex;align-items:center;color:#5f6368;text-decoration:none;font-size:22px;font-weight:550;border-bottom:6px solid transparent}.kg-tabs a.active{color:#202124;border-bottom-color:#202124}.kg-content-grid{display:grid;grid-template-columns:minmax(0,1fr) 370px;gap:64px;padding:50px 6% 90px 64px}.kg-article{border:0;border-radius:0;padding:0;background:#fff}.kg-article h2{font-size:32px;margin:0 0 52px;color:#202124}.kg-article h3{font-size:19px;margin:26px 0 8px;color:#3c4043}.kg-article p{font-size:19px;line-height:1.48;color:#3c4043;margin:0 0 22px}.kg-explorer-toolbar{display:flex;align-items:center;gap:10px;margin:14px 0}.kg-explorer-toolbar button{border:1px solid #dadce0;border-radius:999px;background:#fff;padding:8px 14px;font:inherit;font-size:15px}.kg-explorer-toolbar span{font-size:14px;color:#5f6368}.kg-article .table-shell{border-color:#dadce0;border-radius:8px;max-height:420px}.kg-article table{font-size:14px}.kg-article th{background:#f8f9fa;color:#5f6368}.kg-meta{border:0;border-radius:0;padding:0;background:#fff}.kg-meta section{border-bottom:1px solid #f1f3f4;padding:0 0 28px;margin-bottom:28px}.kg-meta h2{font-size:22px;margin:0 0 8px;color:#202124}.kg-meta strong{font-size:20px}.kg-meta p,.kg-meta a{font-size:19px;color:#5f6368}.kg-meta ul{list-style:none;margin:0;padding:0;display:grid;gap:10px}.kg-meta li{display:grid;grid-template-columns:1fr auto;gap:6px 10px;border:1px solid #dadce0;border-radius:10px;padding:10px}.kg-meta li span{font-weight:650;grid-column:1/-1}.kg-meta li strong{font-size:14px;color:#5f6368}.kg-meta li a{font-size:14px;color:#1a73e8}.kg-tags{display:flex;gap:12px;flex-wrap:wrap}.kg-tags span{border:1px solid #dadce0;border-radius:999px;padding:10px 18px;font-size:19px;color:#3c4043}.kg-discussions{list-style:none;margin:0;padding:0;display:grid;gap:10px}.kg-discussions li{border:1px solid #dadce0;border-radius:10px;padding:14px;display:flex;justify-content:space-between;gap:20px}.kg-discussions span{color:#5f6368}@media(max-width:1200px){.kg-shell{grid-template-columns:1fr}.kg-sidebar{position:static;height:auto;border-right:0;border-bottom:1px solid #dadce0}.kg-primary-nav{grid-template-columns:repeat(2,minmax(0,1fr))}.kg-hero{grid-template-columns:1fr;padding:32px 24px 0}.kg-hero-actions,.kg-cover{grid-column:1;grid-row:auto;justify-self:start}.kg-tabs,.kg-topbar,.kg-content-grid{padding-left:24px;padding-right:24px}.kg-content-grid{grid-template-columns:1fr}.kg-author{margin-bottom:32px}}@media(max-width:720px){.kg-wordmark{font-size:34px}.kg-sidebar{padding:18px}.kg-primary-nav{grid-template-columns:1fr}.kg-topbar{height:auto;padding-top:16px;padding-bottom:16px}.kg-search{height:52px}.kg-hero h1{font-size:34px}.kg-hero-actions{gap:10px;flex-wrap:wrap}.kg-hero-actions button,.kg-hero-actions a{font-size:16px}.kg-tabs{gap:18px;overflow:auto}.kg-tabs a{font-size:18px}.kg-content-grid{gap:28px}.kg-code-popover{width:min(520px,calc(100vw - 48px));left:0;right:auto}}`;
 }
 
 async function write(outDir, path, contents, files) {
@@ -811,7 +923,7 @@ export async function generateSite(config, options = {}) {
   await rm(outDir, { recursive: true, force: true });
   await mkdir(outDir, { recursive: true });
   await write(outDir, "index.html", renderHome(model), files);
-  await write(outDir, "assets/styles.css", styles() + hfSpecificStyles(), files);
+  await write(outDir, "assets/styles.css", styles() + hfSpecificStyles() + kaggleSpecificStyles(), files);
   await write(outDir, "manifest.json", JSON.stringify({ ...model, mockNotice: MOCK_NOTICE }, null, 2), files);
   for (const dataset of model.datasets) {
     await write(outDir, `hf/${dataset.slug}/index.html`, renderHf(model, dataset), files);

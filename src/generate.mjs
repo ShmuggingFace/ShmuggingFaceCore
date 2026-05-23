@@ -220,6 +220,13 @@ function kaggleDataExplorer(dataset, rowCount) {
           ${columns.map((column, index) => `<label><input type="checkbox" data-kg-column-toggle="${index}" ${index < visibleCount ? "checked" : ""}> ${escapeHtml(column)}</label>`).join("")}
         </div>
       </div>
+      <section class="kg-de-about">
+        <div>
+          <h4>About this file</h4>
+          <p>File with full mock data about socks in different laundry conditions and folds</p>
+        </div>
+        <button type="button" data-kg-about-suggest>✎ Suggest Edits</button>
+      </section>
       <div class="kg-de-table-wrap">
         <table class="kg-de-table">
           <thead><tr>${headerCells}</tr></thead>
@@ -880,6 +887,12 @@ function renderKaggle(model, dataset, activeTab = "data-card") {
     .join("");
   const codeSnippet = `kaggle datasets download -d ${dataset.owner}/${dataset.slug}\npython - <<'PY'\nimport pandas as pd\nrows = pd.read_csv("data/train.csv")\nprint(rows.describe(include="all"))\nPY`;
   const tabContent = renderKaggleTabContent(dataset, activeTab, { rowCount, fileRows, tags, codeSnippet });
+  const stickyTabs = [
+    ["data-card", "Data Card", `/kaggle/${dataset.slug}/`],
+    ["code", `Code (${dataset.files.length || 1})`, `/kaggle/${dataset.slug}/code/`],
+    ["discussion", `Discussion (${dataset.discussions.length || 1})`, `/kaggle/${dataset.slug}/discussion/`],
+    ["suggestions", "Suggestions (0)", `/kaggle/${dataset.slug}/suggestions/`],
+  ].map(([key, label, href]) => `<a class="${activeTab === key ? "active" : ""}" href="${href}">${escapeHtml(label)}</a>`).join("");
   const body = `<div class="kg-shell" data-kaggle-page="${escapeHtml(dataset.slug)}">
     <aside class="kg-sidebar">
       <div class="kg-sidebar-top"><button type="button" aria-label="Menu">☰</button><a class="kg-wordmark" href="/">shmaggle</a></div>
@@ -904,6 +917,19 @@ function renderKaggle(model, dataset, activeTab = "data-card") {
       <header class="kg-topbar">
         <label class="kg-search"><span>⌕</span><input aria-label="Search Shmaggle" placeholder="Search"></label>
         <a class="kg-avatar" href="/manifest.json">😏</a>
+      </header>
+      <header class="kg-sticky-repo-header" aria-label="Sticky dataset header">
+        <div class="kg-sticky-repo-row">
+          <a class="kg-sticky-title" href="/kaggle/${dataset.slug}/">🚀<strong>${escapeHtml(dataset.title)}</strong></a>
+          <div class="kg-sticky-actions">
+            <button type="button" class="kg-score" aria-label="Mock upvote"><span>▲</span><strong>${escapeHtml(dataset.likes || "85")}</strong></button>
+            <a class="kg-code-button" href="/kaggle/${dataset.slug}/code/">&lt;&gt; Code</a>
+            <a class="kg-download" href="${escapeHtml(downloadHref)}"${download}>⇩ Download</a>
+            <button type="button" class="kg-medal" aria-label="${escapeHtml(dataset.kaggleMedals)} mock medal"></button>
+            <button type="button" data-kg-more aria-label="More actions">⋮</button>
+          </div>
+        </div>
+        <nav class="kg-sticky-tabs" aria-label="Sticky dataset tabs">${stickyTabs}</nav>
       </header>
       <section class="kg-hero">
         <div class="kg-dataset-copy">
@@ -946,8 +972,8 @@ function renderKaggle(model, dataset, activeTab = "data-card") {
       page.querySelectorAll("[data-kg-code-popover],[data-kg-more-popover]").forEach((item) => item.setAttribute("hidden", ""));
       if (wasHidden) panel?.removeAttribute("hidden");
     });
-    toggle(page.querySelector("[data-kg-code]"), page.querySelector("[data-kg-code-popover]"));
-    toggle(page.querySelector("[data-kg-more]"), page.querySelector("[data-kg-more-popover]"));
+    page.querySelectorAll("[data-kg-code]").forEach((button) => toggle(button, page.querySelector("[data-kg-code-popover]")));
+    page.querySelectorAll("[data-kg-more]").forEach((button) => toggle(button, page.querySelector("[data-kg-more-popover]")));
     const toast = document.querySelector("[data-kg-toast]");
     const showToast = (message) => {
       if (!toast) return;
@@ -956,10 +982,13 @@ function renderKaggle(model, dataset, activeTab = "data-card") {
       clearTimeout(showToast.timer);
       showToast.timer = setTimeout(() => toast.setAttribute("hidden", ""), 1800);
     };
-    page.querySelector(".kg-score")?.addEventListener("click", (event) => {
+    page.querySelectorAll(".kg-score").forEach((score) => score.addEventListener("click", (event) => {
       event.currentTarget.classList.toggle("active");
       showToast(event.currentTarget.classList.contains("active") ? "Mock upvote recorded." : "Mock upvote removed.");
-    });
+    }));
+    const syncStickyHeader = () => document.body.classList.toggle("kg-scrolled", window.scrollY > 210);
+    syncStickyHeader();
+    window.addEventListener("scroll", syncStickyHeader, { passive: true });
     page.querySelector("[data-kg-view-more]")?.addEventListener("click", (event) => {
       const expanded = page.classList.toggle("show-more");
       event.currentTarget.textContent = expanded ? "⌃ View less" : "⌄ View more";
@@ -976,6 +1005,7 @@ function renderKaggle(model, dataset, activeTab = "data-card") {
     page.querySelector("[data-kg-metadata-collapse]")?.addEventListener("click", () => {
       page.querySelectorAll("[data-kg-metadata-toggle]").forEach((button) => setMetadataOpen(button, false));
     });
+    page.querySelector("[data-kg-about-suggest]")?.addEventListener("click", () => showToast("Mock suggestion action is locked for review."));
     page.querySelectorAll(".kg-tab-heading button").forEach((button) => button.addEventListener("click", () => showToast("This Kaggle action is locked in the mock.")));
   </script>`;
   return kaggleLayout({ title: `${dataset.title} | Shmaggle`, body });
@@ -1090,10 +1120,16 @@ function renderKaggleTabContent(dataset, activeTab, { rowCount, fileRows, tags, 
       ${kaggleDataExplorer(dataset, rowCount)}
     </section>
     <section class="kg-social-proof">
-      <h2>See what others are saying about this dataset</h2>
-      <div class="kg-survey-grid">
-        <section><h3>What have you used this dataset for?</h3><p><strong>Learning</strong><span>9</span></p><p><strong>Research</strong><span>6</span></p><p><strong>Application</strong><span>3</span></p><p><strong>LLM Fine-Tuning</strong><span>0</span></p></section>
-        <section><h3>How would you describe this dataset?</h3><p><strong>Well-documented</strong><span>1</span></p><p><strong>Clean data</strong><span>1</span></p><p><strong>Original</strong><span>1</span></p><p><strong>Other</strong><span>0</span></p></section>
+      <div class="kg-social-heading"><span class="kg-social-icon" aria-hidden="true"></span><h2>See what others are saying about this dataset</h2></div>
+      <div class="kg-survey-stack">
+        <section>
+          <h3>What have you used this dataset for?</h3>
+          <div class="kg-survey-pills"><button type="button">Learning 9</button><button type="button">Research 6</button><button type="button">Application 3</button><button type="button">LLM Fine-Tuning 0</button></div>
+        </section>
+        <section>
+          <h3>How would you describe this dataset?</h3>
+          <div class="kg-survey-pills"><button type="button">Well-documented 1</button><button type="button">Well-maintained 1</button><button type="button">Clean data 1</button><button type="button">Original 1</button><button type="button">High-quality notebooks 1</button><button type="button">Other</button></div>
+        </section>
       </div>
     </section>
     <section class="kg-metadata-block">
@@ -1154,6 +1190,11 @@ function kaggleFidelityStyles() {
 	.kg-body{background:#fff;color:#202124}.kg-body .mock-ribbon{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;padding:0;border:0}.kg-shell{grid-template-columns:256px minmax(0,1fr);min-height:100vh}.kg-sidebar{top:0;height:100vh;padding:18px 24px;border-right:1px solid #e0e3e7}.kg-sidebar-top{height:44px;margin:0 0 30px;gap:24px}.kg-sidebar-top button{font-size:22px}.kg-wordmark{font-size:30px;letter-spacing:0}.kg-create{width:138px;height:50px;margin:0 0 24px -18px;gap:12px;font-size:14px;box-shadow:0 2px 7px rgba(60,64,67,.22)}.kg-create span{font-size:34px}.kg-primary-nav{gap:8px;padding-bottom:24px}.kg-primary-nav a,.kg-work a{height:36px;gap:20px;font-size:15px;border-radius:8px}.kg-primary-nav span{width:24px;font-size:16px}.kg-work{padding-top:24px}.kg-work h2{font-size:16px;margin:0 0 14px}.kg-work h3{font-size:15px;margin:18px 0 10px}.kg-thumb{width:26px;height:26px;font-size:14px}.kg-main{min-width:0}.kg-topbar{height:64px;padding:8px 16px 0;display:grid;grid-template-columns:minmax(262px,1fr) minmax(0,1200px) minmax(80px,1fr) auto;align-items:start;gap:18px}.kg-search{grid-column:2;height:48px;max-width:none;width:100%;flex:none;margin-left:0;padding:0 26px;gap:16px}.kg-search span{font-size:24px}.kg-search input{font-size:14px}.kg-avatar{grid-column:4;width:40px;height:40px;border-width:2px;margin-left:0}.kg-hero{display:grid;grid-template-columns:minmax(0,1fr) 280px;grid-template-rows:auto auto;column-gap:24px;row-gap:28px;max-width:1200px;margin:34px auto 0;padding:0}.kg-dataset-copy{grid-column:1;grid-row:1/3}.kg-author{height:34px;margin:0 0 56px;font-size:11px;letter-spacing:.08em;line-height:1}.kg-avatar.small{width:32px;height:32px;font-size:17px;margin-right:16px}.kg-hero h1{font-size:36px;line-height:1.18;max-width:860px;margin:0 0 14px;font-weight:800}.kg-hero p:not(.kg-author){font-size:16px;line-height:1.42;max-width:760px}.kg-hero-actions{grid-column:2;grid-row:1;gap:14px;align-self:start;justify-self:end;margin-top:0}.kg-hero-actions button,.kg-hero-actions a{height:36px;font-size:14px;font-weight:700;padding:0 16px;gap:9px}.kg-score{height:36px!important}.kg-score.active{background:#f8f9fa}.kg-score span{width:44px}.kg-score strong{padding:0 13px}.kg-download{padding:0 18px!important}.kg-medal{width:18px!important;height:18px!important}.kg-hero-actions [data-kg-more]{width:24px!important;font-size:24px}.kg-cover{grid-column:2;grid-row:2;width:280px;min-height:140px;justify-self:end;border-radius:12px;padding:20px}.kg-cover strong{font-size:22px;line-height:1.1}.kg-cover span{font-size:13px}.kg-tabs{max-width:1200px;height:64px;margin:8px auto 0;padding:0;border-bottom:1px solid #dadce0;gap:24px}.kg-tabs a{height:100%;font-size:16px;font-weight:400;border-bottom-width:4px}.kg-tabs a.active{font-weight:500}.kg-content-grid{max-width:1200px;margin:0 auto;display:grid;grid-template-columns:minmax(0,950px) 226px;gap:24px;padding:36px 0 88px}.kg-article{border:0;padding:0}.kg-article h2{font-size:24px;margin:0 0 42px}.kg-article h3{font-size:14px;margin:22px 0 6px}.kg-article p{font-size:15px;line-height:1.45;margin:0 0 18px;color:#3c4043}.kg-article-image{height:180px;margin:32px 0 34px;border-radius:0;background:radial-gradient(circle at 58% 72%,#ffe9a8 0 70px,transparent 72px),radial-gradient(circle at 46% 10%,#b31389 0 42px,transparent 43px),radial-gradient(circle at 75% 0%,#f7669f 0 66px,transparent 67px),linear-gradient(180deg,#e54398,#fbd6df);display:flex;align-items:flex-start;justify-content:center;overflow:hidden;color:#fff}.kg-article-image span{transform:translateY(104px) rotate(-22deg);font-size:22px;font-weight:800;opacity:.9}.kg-view-more{border:0;background:transparent;font:inherit;font-size:14px;font-weight:700;color:#202124;padding:0;margin:0 0 76px 12px;cursor:pointer}.kg-meta{border:0;padding:0}.kg-meta section{border:0;padding:0;margin:0 0 28px}.kg-meta h2{font-size:18px;margin:0 0 7px}.kg-meta strong,.kg-meta p,.kg-meta a{font-size:16px;color:#5f6368}.kg-tags{gap:8px}.kg-tags span{font-size:14px;padding:7px 12px}.kg-explorer-span{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,950px) 226px;gap:24px;margin-top:24px}.kg-explorer-span>h2{display:none}.kg-data-explorer{display:grid;grid-column:1/-1;grid-template-columns:minmax(0,950px) 226px;gap:24px;margin:0}.kg-de-main{border-radius:6px}.kg-de-header{height:86px;padding:0 24px}.kg-de-header h3{font-size:22px}.kg-de-actions{gap:18px}.kg-de-actions a,.kg-de-actions button{font-size:26px}.kg-de-toolbar{height:66px;padding:0 24px}.kg-de-modes{gap:26px}.kg-de-modes button{font-size:16px;border-bottom-width:4px}.kg-de-column-count{font-size:14px;padding-bottom:22px}.kg-de-table-wrap{max-height:520px}.kg-de-table th,.kg-de-table td{min-width:220px;max-width:250px;padding:13px 20px}.kg-de-table th{height:126px}.kg-de-col-title strong{font-size:16px}.kg-de-table th em{font-size:13px}.kg-de-profile td{top:126px;height:104px}.kg-de-profile strong{font-size:24px}.kg-de-side{padding-top:0}.kg-de-side h3{font-size:22px;margin-bottom:12px}.kg-de-side>a{font-size:16px;margin-bottom:22px}.kg-de-file{height:34px;font-size:15px;margin-bottom:48px}.kg-de-side section{padding:28px 0}.kg-de-side h4{font-size:22px}.kg-de-side p{font-size:16px}.kg-social-proof,.kg-metadata-block,.kg-activity-block{grid-column:1/-1;border:0;padding:44px 0 0;background:#fff}.kg-social-proof h2,.kg-metadata-block h2,.kg-activity-block h2{font-size:22px;margin:0 0 18px}.kg-survey-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}.kg-survey-grid section{border:1px solid #e0e3e7;border-radius:8px;padding:18px}.kg-survey-grid h3{font-size:16px;margin:0 0 12px}.kg-survey-grid p{display:flex;justify-content:space-between;margin:10px 0;color:#5f6368}.kg-metadata-heading{height:164px;border-top:1px solid #dadce0;border-bottom:1px solid #dadce0;display:flex;align-items:center;justify-content:space-between}.kg-metadata-heading div{display:flex;align-items:center;gap:26px}.kg-metadata-heading div>span{font-size:28px;color:#202124}.kg-metadata-heading h2{font-size:32px;margin:0;color:#202124}.kg-metadata-heading button{border:0;background:transparent;font:inherit;font-size:18px;font-weight:800;color:#202124;display:flex;align-items:center;gap:16px;cursor:pointer}.kg-metadata-heading button span{font-size:18px;line-height:.8}.kg-metadata-item{border-bottom:1px solid #dadce0}.kg-metadata-toggle{width:100%;min-height:102px;border:0;background:#fff;text-align:left;font:inherit;display:flex;align-items:center;justify-content:space-between;padding:0;cursor:pointer;color:#202124}.kg-metadata-toggle strong{font-size:26px;font-weight:800}.kg-metadata-toggle>span{font-size:28px;width:auto;line-height:1}.kg-metadata-toggle[aria-expanded=true]>span{transform:rotate(180deg)}.kg-metadata-panel{padding:0 0 54px;background:#fff}.kg-metadata-panel p{margin:0;color:#5f6368;font-size:18px;line-height:1.48;max-width:820px}.kg-metadata-panel a{color:#3c4043;text-decoration:underline}.kg-metadata-panel code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;background:#f1f3f4;border-radius:4px;padding:2px 5px;color:#3c4043}.kg-metadata-person{display:flex;align-items:center;gap:22px}.kg-metadata-person strong{font-size:20px;color:#202124}.kg-metadata-person .kg-avatar.small{margin:0}.kg-activity-block{display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px}.kg-activity-block h2{grid-column:1/-1}.kg-activity-block div{border:1px solid #e0e3e7;border-radius:8px;padding:16px}.kg-activity-block strong{display:block;font-size:15px}.kg-activity-block span{display:block;font-size:24px;font-weight:700;margin:8px 0}.kg-activity-block em{color:#5f6368;font-size:13px;font-style:normal}.kg-toast{position:fixed;right:24px;bottom:24px;z-index:60;background:#202124;color:#fff;border-radius:8px;padding:12px 16px;box-shadow:0 8px 24px rgba(60,64,67,.25);font-size:14px}@media(max-width:1200px){.kg-shell{grid-template-columns:1fr}.kg-sidebar{position:static;height:auto}.kg-topbar,.kg-hero,.kg-tabs,.kg-content-grid{max-width:none;margin-left:24px;margin-right:24px}.kg-topbar{grid-template-columns:1fr auto}.kg-search{grid-column:1}.kg-avatar{grid-column:2}.kg-hero,.kg-content-grid,.kg-explorer-span,.kg-data-explorer{grid-template-columns:1fr}.kg-dataset-copy,.kg-hero-actions,.kg-cover{grid-column:1;grid-row:auto;justify-self:start}.kg-de-side{display:none}}`;
 }
 
+function kagglePrecisionStyles() {
+  return `
+	.kg-topbar{position:sticky;top:0;z-index:70;background:#fff}.kg-sticky-repo-header{position:fixed;left:256px;right:0;top:64px;z-index:65;background:#fff;border-bottom:1px solid #dadce0;box-shadow:0 1px 2px rgba(60,64,67,.08);display:none}.kg-scrolled .kg-sticky-repo-header{display:block}.kg-sticky-repo-row{height:86px;max-width:1200px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:24px}.kg-sticky-title{display:flex;align-items:center;gap:0;text-decoration:none;color:#202124;min-width:0;font-size:30px;line-height:1.15;font-weight:800}.kg-sticky-title strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.kg-sticky-actions{display:flex;align-items:center;gap:18px;flex:0 0 auto}.kg-sticky-actions button,.kg-sticky-actions a{height:48px;border:1px solid #bdc1c6;border-radius:999px;background:#fff;color:#202124;text-decoration:none;font:inherit;font-size:18px;font-weight:800;padding:0 20px;display:inline-flex;align-items:center;gap:10px}.kg-sticky-actions .kg-score{padding:0!important}.kg-sticky-actions .kg-medal{width:24px!important;height:24px!important;padding:0!important}.kg-sticky-actions [data-kg-more]{width:32px!important;padding:0!important;border:0;font-size:30px}.kg-sticky-tabs{height:56px;max-width:1200px;margin:0 auto;display:flex;align-items:end;gap:34px}.kg-sticky-tabs a{height:100%;display:flex;align-items:center;border-bottom:5px solid transparent;color:#5f6368;text-decoration:none;font-size:20px;font-weight:500}.kg-sticky-tabs a.active{color:#202124;border-bottom-color:#202124}.kg-social-proof{border-top:1px solid #dadce0!important;padding:64px 0 66px!important}.kg-social-heading{display:flex;align-items:center;gap:30px;margin:0 0 58px}.kg-social-icon{position:relative;width:26px;height:34px;display:inline-block;flex:0 0 auto}.kg-social-icon:before{content:"";position:absolute;left:3px;top:0;width:18px;height:18px;border:3px solid #202124;border-radius:999px}.kg-social-icon:after{content:"";position:absolute;left:8px;top:23px;width:10px;height:8px;border-top:3px solid #202124;border-bottom:3px solid #202124}.kg-social-proof h2{font-size:32px!important;line-height:1.25!important;margin:0!important;color:#202124}.kg-survey-stack{display:grid;gap:46px}.kg-survey-stack section{border:0!important;padding:0!important}.kg-survey-stack h3{font-size:22px!important;line-height:1.25;margin:0 0 28px!important;color:#202124}.kg-survey-pills{display:flex;gap:14px;flex-wrap:wrap}.kg-survey-pills button{height:54px;border:1px solid #dadce0;border-radius:999px;background:#fff;color:#202124;font:inherit;font-size:20px;padding:0 22px;cursor:pointer}.kg-view-more{margin-bottom:30px!important}.kg-data-explorer{grid-template-columns:minmax(0,1fr) 300px!important;gap:32px!important}.kg-de-main{border-radius:8px!important}.kg-de-header{height:96px!important;padding:0 32px!important}.kg-de-header h3{font-size:24px!important;line-height:1.2!important}.kg-de-header h3 span{font-size:24px!important;font-weight:500!important}.kg-de-actions a,.kg-de-actions button{font-size:24px!important}.kg-de-toolbar{height:72px!important;padding:0 32px!important}.kg-de-modes{gap:34px!important}.kg-de-modes button{font-size:20px!important;border-bottom-width:5px!important}.kg-de-column-count{font-size:18px!important;padding-bottom:22px!important}.kg-de-about{height:172px;border-bottom:1px solid #dadce0;background:#f8f9fa;display:flex;align-items:flex-start;justify-content:space-between;gap:24px;padding:34px 32px 0}.kg-de-about h4{font-size:20px;line-height:1.25;margin:0 0 28px;color:#202124}.kg-de-about p{font-size:18px;line-height:1.4;margin:0;color:#3c4043}.kg-de-about button{border:0;background:transparent;color:#202124;font:inherit;font-size:20px;font-weight:800;padding:0;cursor:pointer}.kg-de-table-wrap{max-height:620px!important}.kg-de-table th,.kg-de-table td{min-width:220px!important;max-width:250px!important;padding:12px 18px!important}.kg-de-table th{height:104px!important}.kg-de-profile td{top:104px!important;height:96px!important}.kg-de-side{padding-top:0!important}.kg-de-side h3{font-size:24px!important;line-height:1.2!important}.kg-de-side>a{font-size:20px!important}.kg-de-file{height:46px!important;font-size:18px!important;margin-bottom:52px!important}.kg-de-side h4{font-size:24px!important}.kg-de-side strong{font-size:22px!important}.kg-de-side p{font-size:18px!important;margin:28px 0!important}@media(max-width:1200px){.kg-sticky-repo-header{left:0;top:64px}.kg-sticky-repo-row,.kg-sticky-tabs{margin:0 24px}.kg-sticky-actions{display:none}}`;
+}
+
 async function write(outDir, path, contents, files) {
   const target = join(outDir, path);
   await mkdir(resolve(target, ".."), { recursive: true });
@@ -1183,7 +1224,7 @@ export async function generateSite(config, options = {}) {
   await rm(outDir, { recursive: true, force: true });
   await mkdir(outDir, { recursive: true });
   await write(outDir, "index.html", renderHome(model), files);
-  await write(outDir, "assets/styles.css", styles() + hfSpecificStyles() + kaggleSpecificStyles() + kaggleAlignmentStyles() + kaggleTabStyles() + kaggleExplorerStyles() + kaggleFidelityStyles(), files);
+  await write(outDir, "assets/styles.css", styles() + hfSpecificStyles() + kaggleSpecificStyles() + kaggleAlignmentStyles() + kaggleTabStyles() + kaggleExplorerStyles() + kaggleFidelityStyles() + kagglePrecisionStyles(), files);
   await write(outDir, "manifest.json", JSON.stringify({ ...model, mockNotice: MOCK_NOTICE }, null, 2), files);
   for (const dataset of model.datasets) {
     await write(outDir, `hf/${dataset.slug}/index.html`, renderHf(model, dataset), files);

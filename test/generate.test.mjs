@@ -80,9 +80,11 @@ test("generateSite writes platform pages and mock notice", async () => {
   assert.doesNotMatch(kaggleHtml, /data-kg-column-toggle="0"[^>]*disabled/);
   assert.match(kaggleHtml, /Data Explorer/);
   assert.match(kaggleHtml, /1 file/);
+  assert.match(kaggleHtml, /data-kg-metadata-collapse/);
   assert.match(kaggleHtml, /data-kg-metadata-toggle/);
+  assert.match(kaggleHtml, /aria-expanded="true" aria-controls="kg-metadata-panel-0"/);
   assert.match(kaggleHtml, /aria-controls="kg-metadata-panel-0"/);
-  assert.match(kaggleHtml, /Review access is mocked for this Shmaggle preview only/);
+  assert.match(kaggleHtml, /kg-metadata-person/);
   assert.match(kaggleHtml, /href="\/downloads\/tiny-mock\/data\/train\.csv" download>.*Download/);
   assert.match(kaggleHtml, /kaggle datasets download -d dataset-team\/tiny-mock/);
   const kaggleCodeHtml = await readFile(join(outDir, "kaggle/tiny-mock/code/index.html"), "utf8");

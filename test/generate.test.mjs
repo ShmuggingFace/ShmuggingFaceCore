@@ -59,6 +59,14 @@ test("generateSite writes platform pages and mock notice", async () => {
   assert.match(communityHtml, /Pull requests/);
   assert.match(communityHtml, /Filter by title/);
   assert.match(communityHtml, /How should reviewers interpret the mock row preview/);
+  const kaggleHtml = await readFile(join(outDir, "kaggle/tiny-mock/index.html"), "utf8");
+  assert.match(kaggleHtml, /class="kg-wordmark"[^>]*>shmaggle</);
+  assert.match(kaggleHtml, /class="kg-sidebar"/);
+  assert.match(kaggleHtml, /class="kg-search"/);
+  assert.match(kaggleHtml, /Data Card/);
+  assert.match(kaggleHtml, /About Dataset/);
+  assert.match(kaggleHtml, /href="\/downloads\/tiny-mock\/data\/train\.csv" download>Download/);
+  assert.match(kaggleHtml, /kaggle datasets download -d dataset-team\/tiny-mock/);
 });
 
 test("generateSite requires download backing for listed files", async () => {

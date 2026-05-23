@@ -71,6 +71,12 @@ test("generateSite writes platform pages and mock notice", async () => {
   assert.match(kaggleHtml, /href="\/kaggle\/tiny-mock\/discussion\/">Discussion/);
   assert.match(kaggleHtml, /href="\/kaggle\/tiny-mock\/suggestions\/">Suggestions/);
   assert.match(kaggleHtml, /About Dataset/);
+  assert.match(kaggleHtml, /data-kg-explorer/);
+  assert.match(kaggleHtml, /Detail/);
+  assert.match(kaggleHtml, /Compact/);
+  assert.match(kaggleHtml, /Column/);
+  assert.match(kaggleHtml, /Data Explorer/);
+  assert.match(kaggleHtml, /1 file/);
   assert.match(kaggleHtml, /href="\/downloads\/tiny-mock\/data\/train\.csv" download>Download/);
   assert.match(kaggleHtml, /kaggle datasets download -d dataset-team\/tiny-mock/);
   const kaggleCodeHtml = await readFile(join(outDir, "kaggle/tiny-mock/code/index.html"), "utf8");

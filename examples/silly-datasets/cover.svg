@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" role="img" aria-label="Sock Drawer Benchmark cover">
+  <rect width="1280" height="640" fill="#e0f2fe"/>
+  <circle cx="880" cy="320" r="180" fill="#facc15"/>
+  <circle cx="390" cy="275" r="120" fill="#7c3aed"/>
+  <circle cx="1070" cy="245" r="94" fill="#f472b6"/>
+  <text x="120" y="230" font-family="Arial, sans-serif" font-size="76" font-weight="700" fill="#202124">Sock Drawer Benchmark</text>
+  <text x="120" y="330" font-family="Arial, sans-serif" font-size="42" font-weight="700" fill="#202124">48,720 mock rows</text>
+  <text x="120" y="405" font-family="Arial, sans-serif" font-size="32" fill="#3c4043">A Shmaggle cover image fixture</text>
+</svg>

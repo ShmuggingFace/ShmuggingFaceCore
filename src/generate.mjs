@@ -3,6 +3,7 @@ import { join, resolve } from "node:path";
 
 const MOCK_NOTICE =
   "This is a ShmuggingFace review mock. It is not Hugging Face, Kaggle, or a real dataset release.";
+const CSS_ASSET_HREF = "/assets/styles.css?v=20260524-density-2";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -93,7 +94,7 @@ function layout({ title, body, site, nav = "" }) {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(title)}</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ctext y='50' font-size='50'%3E%F0%9F%98%8F%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/assets/styles.css">
+  <link rel="stylesheet" href="${CSS_ASSET_HREF}">
 </head>
 <body>
   <div class="mock-ribbon">${escapeHtml(MOCK_NOTICE)}</div>
@@ -129,7 +130,7 @@ function kaggleLayout({ title, body }) {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(title)}</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ctext y='50' font-size='50'%3ES%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/assets/styles.css">
+  <link rel="stylesheet" href="${CSS_ASSET_HREF}">
 </head>
 <body class="kg-body">
   <div class="mock-ribbon">${escapeHtml(MOCK_NOTICE)}</div>
@@ -1197,7 +1198,7 @@ function kagglePrecisionStyles() {
 
 function kaggleMeasuredFontCalibrationStyles() {
   return `
-	.kg-sticky-repo-row{height:72px}.kg-sticky-actions{gap:16px}.kg-sticky-actions button,.kg-sticky-actions a{height:36px;font-size:16px;font-weight:700;padding:0 16px;gap:8px}.kg-sticky-actions .kg-score{height:36px!important}.kg-sticky-actions .kg-score span{width:44px}.kg-sticky-actions .kg-score strong{font-size:14px;padding:0 12px}.kg-sticky-actions .kg-medal{width:18px!important;height:18px!important}.kg-sticky-actions [data-kg-more]{font-size:24px!important}.kg-sticky-tabs{height:48px;gap:24px}.kg-sticky-tabs a{font-size:16px;border-bottom-width:4px}.kg-de-header{height:84px!important}.kg-de-header h3,.kg-de-header h3 span{font-size:20px!important;line-height:1.2!important}.kg-de-actions a,.kg-de-actions button{font-size:22px!important}.kg-de-toolbar{height:56px!important}.kg-de-modes{gap:28px!important}.kg-de-modes button{font-size:16px!important;border-bottom-width:4px!important}.kg-de-column-count{font-size:16px!important;padding-bottom:17px!important}.kg-de-about{height:176px;padding-top:34px}.kg-de-about h4{font-size:16px;line-height:1.5;margin-bottom:26px}.kg-de-about p{font-size:14px;line-height:1.57}.kg-de-about button{font-size:16px}.kg-de-side h3,.kg-de-side h4{font-size:16px!important;line-height:1.25!important}.kg-de-side>a,.kg-de-file{font-size:14px!important}.kg-de-file{height:34px!important;margin-bottom:48px!important}.kg-de-side strong{font-size:16px!important}.kg-de-side p{font-size:14px!important;margin:22px 0!important}.kg-de-table th{height:108px!important}.kg-de-col-title strong{font-size:14px!important;font-weight:700!important}.kg-de-table th em{font-size:12px!important}.kg-de-profile td{top:108px!important}.kg-de-profile strong{font-size:24px!important}.kg-de-table td{font-size:14px!important}`;
+	.kg-content-grid{padding-top:8px!important}.kg-explorer-span{margin-top:0!important}.kg-social-proof,.kg-data-explorer,.kg-metadata-block{scroll-margin-top:188px!important}.kg-sticky-repo-row{height:68px}.kg-sticky-title,.kg-sticky-title strong{font-size:28px;font-weight:700;line-height:1.18}.kg-sticky-actions{gap:16px}.kg-sticky-actions button,.kg-sticky-actions a{height:36px;font-size:16px;font-weight:700;padding:0 16px;gap:8px}.kg-sticky-actions .kg-score{height:36px!important}.kg-sticky-actions .kg-score span{width:44px}.kg-sticky-actions .kg-score strong{font-size:14px;padding:0 12px}.kg-sticky-actions .kg-medal{width:18px!important;height:18px!important}.kg-sticky-actions [data-kg-more]{font-size:24px!important}.kg-sticky-tabs{height:48px;gap:24px}.kg-sticky-tabs a{font-size:16px;border-bottom-width:4px}.kg-de-header{height:76px!important}.kg-de-header h3,.kg-de-header h3 span{font-size:20px!important;line-height:1.2!important}.kg-de-actions a,.kg-de-actions button{font-size:22px!important}.kg-de-toolbar{height:52px!important}.kg-de-modes{gap:28px!important}.kg-de-modes button{font-size:16px!important;border-bottom-width:4px!important}.kg-de-column-count{font-size:16px!important;padding-bottom:15px!important}.kg-de-about{height:150px;padding-top:30px}.kg-de-about h4{font-size:16px;line-height:1.5;margin-bottom:22px}.kg-de-about p{font-size:14px;line-height:1.57}.kg-de-about button{font-size:16px}.kg-de-side h3,.kg-de-side h4{font-size:16px!important;line-height:1.25!important}.kg-de-side>a,.kg-de-file{font-size:14px!important}.kg-de-file{height:34px!important;margin-bottom:38px!important}.kg-de-side section{padding:24px 0!important}.kg-de-side h4{margin-bottom:14px!important}.kg-de-side strong{font-size:16px!important}.kg-de-side p{font-size:14px!important;margin:18px 0!important}.kg-de-table th{height:88px!important}.kg-de-col-title strong{font-size:14px!important;font-weight:700!important}.kg-de-table th em{font-size:12px!important;margin-top:10px!important}.kg-de-profile td{top:88px!important;height:84px!important}.kg-de-profile strong{font-size:20px!important}.kg-de-table td{font-size:14px!important;padding-top:10px!important;padding-bottom:10px!important}`;
 }
 
 async function write(outDir, path, contents, files) {

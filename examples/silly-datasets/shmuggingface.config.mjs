@@ -12,6 +12,10 @@ export default {
       owner: "laundry-labs",
       subtitle: "A mock classification dataset for matching clean socks after laundry day.",
       description: "This invented dataset exists only to test review flows. It contains small, harmless tabular examples about socks, colors, patterns, and confidence scores.",
+      descriptionHtml: `<h2>Dataset Card</h2>
+<p>This invented dataset exists only to test review flows. It contains small, harmless tabular examples about socks, colors, patterns, and confidence scores.</p>
+<table><thead><tr><th>split</th><th>purpose</th></tr></thead><tbody><tr><td>train</td><td>model fitting</td></tr><tr><td>valid</td><td>threshold review</td></tr></tbody></table>`,
+      coverImage: "cover.svg",
       license: "CC-BY-4.0 mock",
       task: "tabular-classification",
       language: "English",
@@ -20,8 +24,10 @@ export default {
       kaggleUsability: "9.1",
       kaggleMedals: "Socksilver",
       tags: ["tabular", "classification", "synthetic", "mock-release"],
+      splits: ["train", "valid", "test"],
+      subsets: ["sock-drawer-benchmark"],
       files: [
-        { path: "data/train.csv", size: "18 KB", kind: "CSV", sourcePath: "data/train.csv" },
+        { path: "data/train.csv", size: "18 KB", kind: "CSV", sourcePath: "data/train.csv", about: "Training split with paired sock examples and confidence scores." },
         { path: "data/test.csv", size: "7 KB", kind: "CSV", sourcePath: "data/test.csv" },
         { path: "README.md", size: "5 KB", kind: "Dataset card", sourcePath: "README.dataset.md" },
       ],

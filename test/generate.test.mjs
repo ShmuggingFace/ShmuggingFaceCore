@@ -119,6 +119,60 @@ test("generateSite requires download backing for listed files", async () => {
   );
 });
 
+test("generateSite renders release review config fields", async () => {
+  const outDir = await mkdtemp(join(tmpdir(), "shmuggingface-"));
+  const sourceDir = await mkdtemp(join(tmpdir(), "shmuggingface-source-"));
+  await writeFile(join(sourceDir, "train.csv"), "id,label\n1,demo\n");
+  await writeFile(join(sourceDir, "cover.png"), Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+P+/HgAFeAJ5jB2N6wAAAABJRU5ErkJggg==",
+    "base64",
+  ));
+  const renderedDescription = `<h2>Release Notes</h2>
+<table><thead><tr><th>tier</th></tr></thead><tbody><tr><td>intro</td></tr></tbody></table>
+<pre><code>load_dataset("demo")</code></pre>`;
+
+  const result = await generateSite({
+    datasets: [{
+      title: "Configurable Release",
+      description: "## Release Notes\n\n| tier |\n| --- |\n| intro |\n\n```py\nload_dataset(\"demo\")\n```",
+      descriptionHtml: renderedDescription,
+      coverImage: "cover.png",
+      splits: ["train", "valid", "test"],
+      subsets: ["intro", "intermediate", "advanced"],
+      columns: ["id", "label"],
+      rows: [{ id: "1", label: "demo" }],
+      files: [{
+        path: "data/train.csv",
+        size: "1 KB",
+        kind: "CSV",
+        sourcePath: "train.csv",
+        about: "Custom about text",
+      }],
+    }],
+  }, { outDir, configDir: sourceDir });
+
+  assert.ok(result.files.includes("assets/configurable-release/cover.png"));
+  const hfHtml = await readFile(join(outDir, "hf/configurable-release/index.html"), "utf8");
+  assert.match(hfHtml, /<h2>Release Notes<\/h2>/);
+  assert.match(hfHtml, /<table>/);
+  assert.match(hfHtml, /<pre><code>load_dataset\("demo"\)<\/code><\/pre>/);
+  assert.doesNotMatch(hfHtml, /## Release Notes/);
+  assert.match(hfHtml, /Subset \(3\)/);
+  assert.match(hfHtml, /Split \(3\)/);
+  assert.match(hfHtml, />intro</);
+  assert.match(hfHtml, />intermediate</);
+  assert.match(hfHtml, />advanced</);
+  assert.match(hfHtml, />valid</);
+
+  const kaggleHtml = await readFile(join(outDir, "kaggle/configurable-release/index.html"), "utf8");
+  assert.match(kaggleHtml, /<h2>Release Notes<\/h2>/);
+  assert.match(kaggleHtml, /<table>/);
+  assert.match(kaggleHtml, /<pre><code>load_dataset\("demo"\)<\/code><\/pre>/);
+  assert.doesNotMatch(kaggleHtml, /## Release Notes/);
+  assert.match(kaggleHtml, /<img src="\/assets\/configurable-release\/cover\.png" alt="Dataset cover image">/);
+  assert.match(kaggleHtml, /Custom about text/);
+});
+
 test("generateSite leaves external large-file links out of downloads", async () => {
   const outDir = await mkdtemp(join(tmpdir(), "shmuggingface-"));
   const result = await generateSite({

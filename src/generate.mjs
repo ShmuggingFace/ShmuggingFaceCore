@@ -1,5 +1,5 @@
 import { copyFile, mkdir, rm, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { extname, join, resolve } from "node:path";
 
 const MOCK_NOTICE =
   "This is a ShmuggingFace review mock. It is not Hugging Face, Kaggle, or a real dataset release.";
@@ -23,6 +23,12 @@ function slugify(value) {
 
 function formatNumber(value) {
   return new Intl.NumberFormat("en-US").format(Number(value) || 0);
+}
+
+function stringArray(value, fallback) {
+  return Array.isArray(value) && value.length
+    ? value.map((item) => String(item)).filter(Boolean)
+    : fallback;
 }
 
 function requireString(object, key, label) {
@@ -66,7 +72,11 @@ function normalizeConfig(config) {
         kaggleUsability: dataset.kaggleUsability || "8.8",
         kaggleMedals: dataset.kaggleMedals || "Bronze",
         description: dataset.description || "",
+        descriptionHtml: dataset.descriptionHtml || "",
         tags: dataset.tags || [],
+        coverImage: dataset.coverImage || "",
+        splits: stringArray(dataset.splits, ["train", "validation", "test"]),
+        subsets: stringArray(dataset.subsets, [slugify(dataset.slug || title)]),
         files: dataset.files || [],
         columns: dataset.columns || [],
         rows: dataset.rows || [],
@@ -74,6 +84,20 @@ function normalizeConfig(config) {
       };
     }),
   };
+}
+
+function datasetDescriptionHtml(dataset) {
+  return dataset.descriptionHtml || `<p>${escapeHtml(dataset.description)}</p>`;
+}
+
+function datasetTeaser(dataset) {
+  return dataset.subtitle || (dataset.descriptionHtml ? dataset.title : dataset.description);
+}
+
+function coverImageOutputPath(dataset) {
+  if (!dataset.coverImage) return "";
+  const extension = extname(dataset.coverImage) || ".png";
+  return `assets/${dataset.slug}/cover${extension}`;
 }
 
 function datasetSelect(datasets, activeSlug, platform) {
@@ -179,6 +203,8 @@ function table(dataset) {
 
 function kaggleDataExplorer(dataset, rowCount) {
   const file = dataset.files.find((item) => item.path.endsWith(".csv")) || dataset.files[0] || { path: `${dataset.slug}.csv`, size: "" };
+  const fileName = file.path.split("/").pop() || file.path;
+  const fileAbout = file.about || `Preview file for ${fileName}`;
   const columns = dataset.columns.length ? dataset.columns : ["column"];
   const visibleCount = Math.min(columns.length, 10);
   const rows = dataset.rows.slice(0, 8);
@@ -203,7 +229,7 @@ function kaggleDataExplorer(dataset, rowCount) {
   return `<section class="kg-data-explorer" data-kg-explorer>
     <div class="kg-de-main">
       <header class="kg-de-header">
-        <h3>${escapeHtml(file.path.split("/").pop() || file.path)} <span>(${escapeHtml(file.size || "mock size")})</span></h3>
+        <h3>${escapeHtml(fileName)} <span>(${escapeHtml(file.size || "mock size")})</span></h3>
         <div class="kg-de-actions">
           <a href="${escapeHtml(fileHref(dataset, file))}"${file.downloadUrl ? "" : " download"} aria-label="Download ${escapeHtml(file.path)}">⇩</a>
           <button type="button" data-kg-explorer-fullscreen aria-label="Fullscreen">⛶</button>
@@ -224,7 +250,7 @@ function kaggleDataExplorer(dataset, rowCount) {
       <section class="kg-de-about">
         <div>
           <h4>About this file</h4>
-          <p>File with full mock data about socks in different laundry conditions and folds</p>
+          <p>${escapeHtml(fileAbout)}</p>
         </div>
         <button type="button" data-kg-about-suggest>✎ Suggest Edits</button>
       </section>
@@ -239,7 +265,7 @@ function kaggleDataExplorer(dataset, rowCount) {
     <aside class="kg-de-side" data-kg-explorer-side>
       <h3>Data Explorer</h3>
       <a href="${escapeHtml(fileHref(dataset, file))}"${file.downloadUrl ? "" : " download"}>Version 1 <span>(${escapeHtml(file.size || "mock size")})</span></a>
-      <div class="kg-de-file"><span>▥</span>${escapeHtml(file.path.split("/").pop() || file.path)}</div>
+      <div class="kg-de-file"><span>▥</span>${escapeHtml(fileName)}</div>
       <section>
         <h4>Summary</h4>
         <p><span>▸</span><strong>1 file</strong></p>
@@ -436,18 +462,22 @@ function hfTabs(dataset, active = "card") {
 function viewerShell(dataset, { studio = false } = {}) {
   const rowCount = Math.max(dataset.rowCount, dataset.rows.length, 1);
   const firstColumn = escapeHtml(dataset.columns[0] || "text");
+  const subsets = dataset.subsets.length ? dataset.subsets : [dataset.slug];
+  const splits = dataset.splits.length ? dataset.splits : ["train", "validation", "test"];
+  const activeSubset = subsets[0] || dataset.slug;
+  const activeSplit = splits[0] || "train";
   return `<section class="dataset-viewer ${studio ? "studio-dataset-viewer" : ""}" id="data-studio" data-viewer="${escapeHtml(dataset.slug)}">
     <header>
       <h2>▦ Dataset Viewer</h2>
       ${studio ? '<div class="studio-panel-actions"><button type="button">▯</button><button type="button">⋮</button></div>' : '<div class="viewer-actions"><a href="#parquet-details" data-action="parquet">↻ Auto-converted to Parquet</a><button type="button" data-action="api">&lt;/&gt; API</button><button type="button" data-action="embed">Embed</button><button type="button" data-action="duplicate">Duplicate</button><button type="button" data-action="studio">Data Studio</button></div>'}
     </header>
     <div class="viewer-splits">
-      <button type="button" data-menu-button="subset" aria-expanded="false"><span>Subset (${dataset.files.length})</span><strong>${escapeHtml(dataset.slug)} · ${formatNumber(rowCount)} rows</strong><em>⌄</em></button>
-      <button type="button" data-menu-button="split" aria-expanded="false"><span>Split (3)</span><strong>train · ${formatNumber(rowCount)} rows</strong><em>⌄</em></button>
+      <button type="button" data-menu-button="subset" aria-expanded="false"><span>Subset (${escapeHtml(String(subsets.length))})</span><strong>${escapeHtml(activeSubset)} · ${formatNumber(rowCount)} rows</strong><em>⌄</em></button>
+      <button type="button" data-menu-button="split" aria-expanded="false"><span>Split (${escapeHtml(String(splits.length))})</span><strong>${escapeHtml(activeSplit)} · ${formatNumber(rowCount)} rows</strong><em>⌄</em></button>
     </div>
     <div class="viewer-menu-row">
-      <div class="viewer-menu" data-menu="subset" hidden><button type="button">${escapeHtml(dataset.slug)}</button><button type="button">default</button><button type="button">review-sample</button></div>
-      <div class="viewer-menu" data-menu="split" hidden><button type="button">train</button><button type="button">validation</button><button type="button">test</button></div>
+      <div class="viewer-menu" data-menu="subset" hidden>${subsets.map((subset) => `<button type="button">${escapeHtml(subset)}</button>`).join("")}</div>
+      <div class="viewer-menu" data-menu="split" hidden>${splits.map((split) => `<button type="button">${escapeHtml(split)}</button>`).join("")}</div>
     </div>
     <label class="viewer-search"><span>⌕</span><input data-viewer-search placeholder="Search this dataset"></label>
     ${studio ? "" : `<div class="viewer-panels">
@@ -762,7 +792,7 @@ function renderHf(model, dataset) {
       ${viewerScript(dataset)}
       <section class="hf-card-markdown" id="dataset-card">
         <h2>Dataset Card for "${escapeHtml(dataset.title)}"</h2>
-        <p>${escapeHtml(dataset.description)}</p>
+        ${datasetDescriptionHtml(dataset)}
         <h3>Mock release notes</h3>
         <p>${escapeHtml(dataset.subtitle)}</p>
       </section>
@@ -819,12 +849,10 @@ function renderHfFiles(model, dataset) {
 
 function renderHfDataStudio(model, dataset) {
   const rowCount = Math.max(dataset.rowCount, dataset.rows.length, 1);
-  const splits = [
-    [`${dataset.slug}/train`, formatNumber(rowCount)],
-    [`${dataset.slug}/validation`, formatNumber(Math.max(1, Math.round(rowCount * 0.1)))],
-    [`${dataset.slug}/test`, formatNumber(Math.max(1, Math.round(rowCount * 0.1)))],
-    [`${dataset.slug}/review-sample`, formatNumber(Math.max(1, dataset.rows.length))],
-  ];
+  const splitPills = dataset.subsets.flatMap((subset) => dataset.splits.map((split, index) => [
+    `${subset}/${split}`,
+    formatNumber(index === 0 ? rowCount : Math.max(1, Math.round(rowCount * 0.1))),
+  ]));
   const body = `${renderHfCompactHeader(dataset, "studio")}
   <section class="data-studio-layout" data-studio="${escapeHtml(dataset.slug)}">
     <div class="studio-viewer-column">
@@ -843,8 +871,8 @@ function renderHfDataStudio(model, dataset) {
           <strong>Get Started</strong>
           <p>Select a subset/split to load the data and start chatting.</p>
           <div class="studio-split-pills">
-            ${splits.map(([label, count]) => `<button type="button" data-studio-split>${escapeHtml(label)} · ${escapeHtml(count)}</button>`).join("")}
-            <button type="button" class="more-splits" data-studio-split>+8 more⌄</button>
+            ${splitPills.slice(0, 4).map(([label, count]) => `<button type="button" data-studio-split>${escapeHtml(label)} · ${escapeHtml(count)}</button>`).join("")}
+            ${splitPills.length > 4 ? `<button type="button" class="more-splits" data-studio-split>+${escapeHtml(String(splitPills.length - 4))} more⌄</button>` : ""}
           </div>
         </div>
       </div>
@@ -886,8 +914,12 @@ function renderKaggle(model, dataset, activeTab = "data-card") {
       return `<li><span>${escapeHtml(file.path)}</span><strong>${escapeHtml(file.size || "")}</strong><a href="${escapeHtml(href)}"${fileDownload}>${escapeHtml(label)}</a></li>`;
     })
     .join("");
+  const coverPath = coverImageOutputPath(dataset);
+  const cover = coverPath
+    ? `<figure class="kg-cover-image"><img src="/${escapeHtml(coverPath)}" alt="Dataset cover image"></figure>`
+    : "";
   const codeSnippet = `kaggle datasets download -d ${dataset.owner}/${dataset.slug}\npython - <<'PY'\nimport pandas as pd\nrows = pd.read_csv("data/train.csv")\nprint(rows.describe(include="all"))\nPY`;
-  const tabContent = renderKaggleTabContent(dataset, activeTab, { rowCount, fileRows, tags, codeSnippet });
+  const tabContent = renderKaggleTabContent(dataset, activeTab, { rowCount, fileRows, tags, codeSnippet, cover });
   const stickyTabs = [
     ["data-card", "Data Card", `/kaggle/${dataset.slug}/`],
     ["code", `Code (${dataset.files.length || 1})`, `/kaggle/${dataset.slug}/code/`],
@@ -936,7 +968,7 @@ function renderKaggle(model, dataset, activeTab = "data-card") {
         <div class="kg-dataset-copy">
           <p class="kg-author"><span class="kg-avatar small">😏</span><strong>${escapeHtml(dataset.contactName || dataset.owner)}</strong> · UPDATED ${escapeHtml(dataset.updated)} AGO</p>
           <h1>${escapeHtml(dataset.title)}</h1>
-          <p>${escapeHtml(dataset.subtitle || dataset.description)}</p>
+          <p>${escapeHtml(datasetTeaser(dataset))}</p>
         </div>
         <div class="kg-hero-actions">
           <button type="button" class="kg-score" aria-label="Mock upvote"><span>▲</span><strong>${escapeHtml(dataset.likes || "85")}</strong></button>
@@ -1012,7 +1044,7 @@ function renderKaggle(model, dataset, activeTab = "data-card") {
   return kaggleLayout({ title: `${dataset.title} | Shmaggle`, body });
 }
 
-function renderKaggleTabContent(dataset, activeTab, { rowCount, fileRows, tags, codeSnippet }) {
+function renderKaggleTabContent(dataset, activeTab, { rowCount, fileRows, tags, codeSnippet, cover }) {
   const discussions = dataset.discussions.length ? dataset.discussions : [
     "Does the mock preview communicate the release shape clearly?",
     "Should the real release include a larger validation split?",
@@ -1103,8 +1135,9 @@ function renderKaggleTabContent(dataset, activeTab, { rowCount, fileRows, tags, 
   }
   return `<section class="kg-content-grid">
     <article class="kg-article">
+      ${cover}
       <h2>About Dataset</h2>
-      <p>${escapeHtml(dataset.description)}</p>
+      ${datasetDescriptionHtml(dataset)}
       <h3>Objective</h3>
       <p>This deliberately fake release is large enough to exercise row previews, file downloads, metadata, and review copy before a real upload to Kaggle.</p>
       <p><strong>Do an EDA and try to predict which socks and laundry conditions achieve suspiciously stable pair success.</strong></p>
@@ -1198,7 +1231,7 @@ function kagglePrecisionStyles() {
 
 function kaggleMeasuredFontCalibrationStyles() {
   return `
-	.kg-content-grid{padding-top:0!important}.kg-explorer-span{margin-top:0!important}.kg-social-proof,.kg-data-explorer,.kg-metadata-block{scroll-margin-top:166px!important}.kg-sticky-repo-row{height:58px}.kg-sticky-title,.kg-sticky-title strong{font-size:24px;font-weight:700;line-height:1.18}.kg-sticky-actions{gap:14px}.kg-sticky-actions button,.kg-sticky-actions a{height:34px;font-size:14px;font-weight:700;padding:0 14px;gap:8px}.kg-sticky-actions .kg-score{height:34px!important}.kg-sticky-actions .kg-score span{width:40px}.kg-sticky-actions .kg-score strong{font-size:13px;padding:0 11px}.kg-sticky-actions .kg-medal{width:17px!important;height:17px!important}.kg-sticky-actions [data-kg-more]{font-size:22px!important}.kg-sticky-tabs{height:44px;gap:24px}.kg-sticky-tabs a{font-size:15px;border-bottom-width:4px}.kg-de-header{height:62px!important;padding:0 22px!important}.kg-de-header h3,.kg-de-header h3 span{font-size:18px!important;line-height:1.2!important}.kg-de-actions{gap:14px!important}.kg-de-actions a,.kg-de-actions button{font-size:20px!important}.kg-de-toolbar{height:46px!important;padding:0 22px!important}.kg-de-modes{gap:24px!important}.kg-de-modes button{font-size:14px!important;border-bottom-width:4px!important}.kg-de-column-count{font-size:14px!important;padding-bottom:12px!important}.kg-de-about{height:116px!important;padding:22px 22px 0!important}.kg-de-about h4{font-size:15px;line-height:1.35;margin-bottom:18px}.kg-de-about p{font-size:13px;line-height:1.45}.kg-de-about button{font-size:15px}.kg-de-side h3,.kg-de-side h4{font-size:15px!important;line-height:1.25!important}.kg-de-side>a,.kg-de-file{font-size:13px!important}.kg-de-file{height:32px!important;margin-bottom:30px!important}.kg-de-side section{padding:18px 0!important}.kg-de-side h4{margin-bottom:12px!important}.kg-de-side strong{font-size:15px!important}.kg-de-side p{font-size:13px!important;margin:13px 0!important}.kg-de-table th,.kg-de-table td{padding-left:14px!important;padding-right:14px!important}.kg-de-table th{height:74px!important}.kg-de-col-title strong{font-size:12px!important;font-weight:700!important}.kg-de-table th em{font-size:11px!important;margin-top:8px!important}.kg-de-profile td{top:74px!important;height:70px!important}.kg-de-profile strong{font-size:17px!important;line-height:1.15!important}.kg-de-table td{font-size:13px!important;padding-top:8px!important;padding-bottom:8px!important}`;
+	.hf-card-markdown table,.kg-article table{width:100%;min-width:0;margin:16px 0;border-collapse:collapse}.hf-card-markdown th,.hf-card-markdown td,.kg-article th,.kg-article td{border:1px solid #d8dee8;padding:8px 10px;text-align:left}.hf-card-markdown pre,.kg-article pre{border:1px solid #d8dee8;border-radius:8px;background:#f8fafc;padding:14px;overflow:auto}.hf-card-markdown code,.kg-article code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}.kg-cover-image{margin:0 0 30px}.kg-cover-image img{display:block;width:100%;aspect-ratio:2/1;object-fit:cover;border-radius:8px;border:1px solid #dadce0}.kg-content-grid{padding-top:0!important}.kg-explorer-span{margin-top:0!important}.kg-social-proof,.kg-data-explorer,.kg-metadata-block{scroll-margin-top:166px!important}.kg-sticky-repo-row{height:58px}.kg-sticky-title,.kg-sticky-title strong{font-size:24px;font-weight:700;line-height:1.18}.kg-sticky-actions{gap:14px}.kg-sticky-actions button,.kg-sticky-actions a{height:34px;font-size:14px;font-weight:700;padding:0 14px;gap:8px}.kg-sticky-actions .kg-score{height:34px!important}.kg-sticky-actions .kg-score span{width:40px}.kg-sticky-actions .kg-score strong{font-size:13px;padding:0 11px}.kg-sticky-actions .kg-medal{width:17px!important;height:17px!important}.kg-sticky-actions [data-kg-more]{font-size:22px!important}.kg-sticky-tabs{height:44px;gap:24px}.kg-sticky-tabs a{font-size:15px;border-bottom-width:4px}.kg-de-header{height:62px!important;padding:0 22px!important}.kg-de-header h3,.kg-de-header h3 span{font-size:18px!important;line-height:1.2!important}.kg-de-actions{gap:14px!important}.kg-de-actions a,.kg-de-actions button{font-size:20px!important}.kg-de-toolbar{height:46px!important;padding:0 22px!important}.kg-de-modes{gap:24px!important}.kg-de-modes button{font-size:14px!important;border-bottom-width:4px!important}.kg-de-column-count{font-size:14px!important;padding-bottom:12px!important}.kg-de-about{height:116px!important;padding:22px 22px 0!important}.kg-de-about h4{font-size:15px;line-height:1.35;margin-bottom:18px}.kg-de-about p{font-size:13px;line-height:1.45}.kg-de-about button{font-size:15px}.kg-de-side h3,.kg-de-side h4{font-size:15px!important;line-height:1.25!important}.kg-de-side>a,.kg-de-file{font-size:13px!important}.kg-de-file{height:32px!important;margin-bottom:30px!important}.kg-de-side section{padding:18px 0!important}.kg-de-side h4{margin-bottom:12px!important}.kg-de-side strong{font-size:15px!important}.kg-de-side p{font-size:13px!important;margin:13px 0!important}.kg-de-table th,.kg-de-table td{padding-left:14px!important;padding-right:14px!important}.kg-de-table th{height:74px!important}.kg-de-col-title strong{font-size:12px!important;font-weight:700!important}.kg-de-table th em{font-size:11px!important;margin-top:8px!important}.kg-de-profile td{top:74px!important;height:70px!important}.kg-de-profile strong{font-size:17px!important;line-height:1.15!important}.kg-de-table td{font-size:13px!important;padding-top:8px!important;padding-bottom:8px!important}`;
 }
 
 async function write(outDir, path, contents, files) {
@@ -1217,6 +1250,18 @@ async function copyDownload(outDir, dataset, file, options, files) {
   }
   const source = resolve(options.configDir || process.cwd(), file.sourcePath);
   const targetPath = `downloads/${dataset.slug}/${file.path}`;
+  const target = join(outDir, targetPath);
+  await mkdir(resolve(target, ".."), { recursive: true });
+  await copyFile(source, target);
+  files.push(targetPath);
+}
+
+async function copyCoverImage(outDir, dataset, options, files) {
+  if (!dataset.coverImage) {
+    return;
+  }
+  const source = resolve(options.configDir || process.cwd(), dataset.coverImage);
+  const targetPath = coverImageOutputPath(dataset);
   const target = join(outDir, targetPath);
   await mkdir(resolve(target, ".."), { recursive: true });
   await copyFile(source, target);
@@ -1244,6 +1289,7 @@ export async function generateSite(config, options = {}) {
     for (const file of dataset.files) {
       await copyDownload(outDir, dataset, file, options, files);
     }
+    await copyCoverImage(outDir, dataset, options, files);
   }
   return { outDir, files };
 }

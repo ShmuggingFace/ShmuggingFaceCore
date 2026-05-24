@@ -41,10 +41,20 @@ export default {
     owner: "laundry-labs",
     subtitle: "A mock classification dataset for matching clean socks.",
     description: "A fake release used to review copy and data previews.",
+    descriptionHtml: "<h2>Dataset Card</h2><p>A fake release used to review copy and data previews.</p>",
+    coverImage: "dataset-cover-image.png",
     license: "CC-BY-4.0 mock",
     task: "tabular-classification",
     tags: ["tabular", "synthetic", "mock-release"],
-    files: [{ path: "data/train.csv", size: "18 KB", kind: "CSV", sourcePath: "data/train.csv" }],
+    splits: ["train", "valid", "test"],
+    subsets: ["sock-drawer-benchmark"],
+    files: [{
+      path: "data/train.csv",
+      size: "18 KB",
+      kind: "CSV",
+      sourcePath: "data/train.csv",
+      about: "Training split for the mock release.",
+    }],
     columns: ["sock_id", "pattern", "pair_probability"],
     rows: [{ sock_id: "sock-0001", pattern: "stripes", pair_probability: "0.98" }],
   }],
@@ -62,6 +72,27 @@ During local development from this repository:
 ```sh
 npm run build:demo
 ```
+
+## Dataset Config Fields
+
+Each dataset entry supports the following release-review fields:
+
+- `description`: plain-text fallback for the Hugging Face and Kaggle dataset
+  card sections.
+- `descriptionHtml`: optional pre-rendered dataset-card HTML. When present, it
+  is injected raw into both platform card sections. Use this when a downstream
+  project renders a README or other Markdown source before writing
+  `shmuggingface.config.mjs`.
+- `coverImage`: optional image path resolved relative to the config file. The
+  generator copies it into `assets/<dataset-slug>/cover.<ext>` and renders it as
+  a Kaggle-style data-card banner.
+- `splits`: optional Dataset Viewer split labels. Defaults to
+  `["train", "validation", "test"]`.
+- `subsets`: optional Dataset Viewer subset labels. Defaults to the dataset
+  slug.
+- `files[].about`: optional Kaggle Data Explorer "About this file" copy. If it
+  is omitted, the mock uses a generic preview description based on the file
+  name.
 
 ## Cloudflare Pages
 

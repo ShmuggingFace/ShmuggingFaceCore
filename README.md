@@ -67,6 +67,16 @@ Then generate the static site:
 npx @shmuggingface/core build --config shmuggingface.config.mjs --out dist
 ```
 
+For repeatable downstream builds, pin the GitHub release tag:
+
+```json
+{
+  "dependencies": {
+    "@shmuggingface/core": "github:ShmuggingFace/ShmuggingFaceCore#v1.0.0"
+  }
+}
+```
+
 During local development from this repository:
 
 ```sh

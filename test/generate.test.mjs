@@ -34,6 +34,10 @@ test("generateSite writes platform pages and mock notice", async () => {
   const html = await readFile(join(outDir, "index.html"), "utf8");
   assert.match(html, /ShmuggingFace review mock/);
   assert.match(html, /Shmaggle/);
+  assert.match(html, /class="home-shell"/);
+  assert.match(html, /mock dataset ready for review/);
+  assert.match(html, /href="\/hf\/tiny-mock\/">ShmuggingFace<\/a>/);
+  assert.match(html, /href="\/kaggle\/tiny-mock\/">Shmaggle<\/a>/);
   assert.equal(await readFile(join(outDir, "downloads/tiny-mock/data/train.csv"), "utf8"), "id,label\n1,demo\n");
   const hfHtml = await readFile(join(outDir, "hf/tiny-mock/index.html"), "utf8");
   assert.match(hfHtml, /mailto:demo\.reviewer@example\.test/);

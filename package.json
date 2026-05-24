@@ -1,6 +1,6 @@
 {
   "name": "@shmuggingface/core",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Generate Cloudflare Pages review mocks for Hugging Face and Kaggle dataset releases.",
   "type": "module",
   "bin": {

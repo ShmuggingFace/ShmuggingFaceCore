@@ -1156,9 +1156,6 @@ function renderKaggleTabContent(dataset, activeTab, { rowCount, fileRows, tags, 
       ${cover}
       <h2>About Dataset</h2>
       ${datasetDescriptionHtml(dataset)}
-      <h3>Objective</h3>
-      <p>This deliberately fake release is large enough to exercise row previews, file downloads, metadata, and review copy before a real upload to Kaggle.</p>
-      <p><strong>Do an EDA and try to predict which socks and laundry conditions achieve suspiciously stable pair success.</strong></p>
       <div class="kg-article-image" aria-label="Mock dataset illustration"><span>${escapeHtml(dataset.title)}</span></div>
       <button class="kg-view-more" type="button" data-kg-view-more>⌄ View more</button>
     </article>

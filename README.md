@@ -153,7 +153,8 @@ Each dataset entry supports the following release-review fields:
   `["train", "validation", "test"]`.
 - `splitRowCounts`: optional object keyed by split name. These counts are
   rendered in viewer split controls and metadata independently from the preview
-  `rows` array.
+  `rows` array. Multi-subset datasets may instead use nested counts such as
+  `{ subsetName: { train: 1200, validation: 150 } }`.
 - `subsets`: optional Dataset Viewer subset labels. Defaults to the dataset
   slug.
 - `rowCount`: optional dataset-level row count. If omitted, the generator falls
@@ -188,7 +189,7 @@ Each dataset entry supports the following release-review fields:
   surfaces.
 - `artifactGroups`: optional grouped form equivalent to the group-specific
   fields above, with keys such as `tables`, `docs`, `notebooks`, `validation`,
-  or `manifests`.
+  or `manifests`. Unknown keys warn, and fail when `--strict-config` is used.
 - `meta`: optional opaque downstream metadata. The generator preserves this in
   `manifest.json` and does not interpret fields inside this object. `meta` is
   also accepted on `site` and `files[]`.
@@ -250,7 +251,10 @@ Relational releases can keep the flat `files` array for backwards-compatible
 consumers while adding grouped artifacts for the richer file surfaces:
 
 ```js
-splitRowCounts: { train: 8750, validation: 1200, test: 1050 },
+splitRowCounts: {
+  public: { train: 8750, validation: 1200, test: 1050 },
+  internal: { train: 350, validation: 40, test: 30 },
+},
 files: [{ path: "data/preview.csv", size: "24 KB", sourcePath: "data/preview.csv" }],
 tableGroups: [{
   title: "Core relational tables",

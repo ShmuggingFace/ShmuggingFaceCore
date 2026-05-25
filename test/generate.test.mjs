@@ -269,8 +269,12 @@ test("generateSite renders relational artifact groups and split row counts", asy
     datasets: [{
       title: "Relational Release",
       rowCount: 2000,
+      subsets: ["public", "private"],
       splits: ["train", "validation"],
-      splitRowCounts: { train: 1500, validation: 500 },
+      splitRowCounts: {
+        public: { train: 1500, validation: 500 },
+        private: { train: 10, validation: 5 },
+      },
       columns: ["customer_id", "name"],
       rows: [{ customer_id: "1", name: "Ada" }],
       files: [{ path: "legacy/preview.csv", size: "1 KB", downloadUrl: "https://example.com/preview.csv" }],
@@ -315,27 +319,84 @@ test("generateSite renders relational artifact groups and split row counts", asy
   const manifest = JSON.parse(await readFile(join(outDir, "manifest.json"), "utf8"));
   assert.equal(manifest.datasets[0].files.length, 1);
   assert.equal(manifest.datasets[0].artifactGroups.length, 4);
-  assert.deepEqual(manifest.datasets[0].splitRowCounts, { train: 1500, validation: 500 });
+  assert.equal(manifest.datasets[0].allFiles, undefined);
+  assert.deepEqual(manifest.datasets[0].splitRowCounts, {
+    public: { train: 1500, validation: 500 },
+    private: { train: 10, validation: 5 },
+  });
   assert.deepEqual(manifest.datasets[0].artifactGroups[0].files[0].columnDtypes, { customer_id: "int64", name: "string" });
-  assert.ok(manifest.datasets[0].allFiles.some((file) => file.path === "tables/customers.csv"));
 
   const hfHtml = await readFile(join(outDir, "hf/relational-release/index.html"), "utf8");
   assert.match(hfHtml, /validation · 500 rows/);
+  assert.match(hfHtml, /Preview files/);
+  assert.match(hfHtml, /legacy\/preview\.csv/);
   assert.match(hfHtml, /Core tables/);
   assert.match(hfHtml, /2 schema columns/);
   const hfFilesHtml = await readFile(join(outDir, "hf/relational-release/files-and-versions/index.html"), "utf8");
+  assert.match(hfFilesHtml, /Preview files/);
+  assert.match(hfFilesHtml, /legacy\/preview\.csv/);
   assert.match(hfFilesHtml, /Core tables/);
   assert.match(hfFilesHtml, /Normalized relational tables/);
   assert.match(hfFilesHtml, /tables\/customers\.csv/);
   assert.match(hfFilesHtml, /1,200 rows/);
   const kaggleHtml = await readFile(join(outDir, "kaggle/relational-release/index.html"), "utf8");
   assert.match(kaggleHtml, /Data files/);
+  assert.match(kaggleHtml, /Preview files/);
+  assert.match(kaggleHtml, /legacy\/preview\.csv/);
   assert.match(kaggleHtml, /Core tables/);
   assert.match(kaggleHtml, /tables\/orders\.csv/);
-  assert.match(kaggleHtml, /train: 1,500, validation: 500/);
-  assert.match(kaggleHtml, /pd\.read_csv\(&quot;tables\/customers\.csv&quot;\)/);
+  assert.match(kaggleHtml, /public\/train: 1,500, public\/validation: 500, private\/train: 10, private\/validation: 5/);
+  assert.match(kaggleHtml, /pd\.read_csv\(&quot;legacy\/preview\.csv&quot;\)/);
   assert.equal(await readFile(join(outDir, "downloads/relational-release/tables/customers.csv"), "utf8"), "customer_id,name\n1,Ada\n");
   assert.equal(await readFile(join(outDir, "downloads/relational-release/docs/README.md"), "utf8"), "# docs\n");
+});
+
+test("generateSite validates nested artifactGroups keys in strict mode", async () => {
+  const outDir = await mkdtemp(join(tmpdir(), "shmuggingface-"));
+  await assert.rejects(
+    generateSite({
+      datasets: [{
+        title: "Bad Artifact Groups",
+        rows: [{ id: "1" }],
+        files: [{ path: "data/full.csv", size: "1 KB", downloadUrl: "https://example.com/full.csv" }],
+        artifactGroups: {
+          table: [{
+            title: "Typo group",
+            files: [{ path: "tables/full.csv", size: "1 KB", downloadUrl: "https://example.com/full.csv" }],
+          }],
+        },
+      }],
+    }, { outDir, validation: "strict" }),
+    /datasets\[0\]\.artifactGroups\.table is not a recognized config field/,
+  );
+});
+
+test("generateSite supports grouped artifacts without a flat files array", async () => {
+  const outDir = await mkdtemp(join(tmpdir(), "shmuggingface-"));
+  const sourceDir = await mkdtemp(join(tmpdir(), "shmuggingface-source-"));
+  await writeFile(join(sourceDir, "metrics.csv"), "metric,value\nrows,10\n");
+
+  await generateSite({
+    datasets: [{
+      title: "Grouped Only",
+      rows: [{ metric: "rows", value: "10" }],
+      artifactGroups: {
+        validation: [{
+          title: "Validation outputs",
+          files: [{ path: "validation/metrics.csv", size: "1 KB", kind: "CSV", sourcePath: "metrics.csv" }],
+        }],
+      },
+    }],
+  }, { outDir, configDir: sourceDir });
+
+  const manifest = JSON.parse(await readFile(join(outDir, "manifest.json"), "utf8"));
+  assert.deepEqual(manifest.datasets[0].files, []);
+  assert.equal(manifest.datasets[0].allFiles, undefined);
+  assert.equal(manifest.datasets[0].artifactGroups[0].title, "Validation outputs");
+  const hfFilesHtml = await readFile(join(outDir, "hf/grouped-only/files-and-versions/index.html"), "utf8");
+  assert.match(hfFilesHtml, /Validation outputs/);
+  assert.match(hfFilesHtml, /validation\/metrics\.csv/);
+  assert.equal(await readFile(join(outDir, "downloads/grouped-only/validation/metrics.csv"), "utf8"), "metric,value\nrows,10\n");
 });
 
 test("generateSite labels row-derived explorer stats as preview-sample stats", async () => {

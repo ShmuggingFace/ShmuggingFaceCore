@@ -1,9 +1,15 @@
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { generateSite } from "../src/generate.mjs";
+
+const execFileAsync = promisify(execFile);
+const cliPath = fileURLToPath(new URL("../bin/shmuggingface.mjs", import.meta.url));
 
 test("generateSite writes platform pages and mock notice", async () => {
   const outDir = await mkdtemp(join(tmpdir(), "shmuggingface-"));
@@ -175,6 +181,114 @@ test("generateSite renders release review config fields", async () => {
   assert.doesNotMatch(kaggleHtml, /## Release Notes/);
   assert.match(kaggleHtml, /<img src="\/assets\/configurable-release\/cover\.png" alt="Dataset cover image">/);
   assert.match(kaggleHtml, /Custom about text/);
+});
+
+test("generateSite reports config-contract warnings and supports strict validation", async () => {
+  const outDir = await mkdtemp(join(tmpdir(), "shmuggingface-"));
+  const result = await generateSite({
+    extraTopLevel: true,
+    mockOnly: { ignored: true },
+    meta: { source: "test-build" },
+    site: {
+      title: "Contract Review",
+      unexpectedSiteField: true,
+      mockOnly: { ignored: true },
+      meta: { run: "local" },
+    },
+    datasets: [{
+      title: "Contract Dataset",
+      unexpectedDatasetField: true,
+      kaggleUsability: "10.00",
+      kaggleMedals: "gold",
+      mockOnly: {
+        kaggleUsability: "9.75",
+        kaggleMedals: "bronze",
+        unknownMockOnly: true,
+      },
+      meta: { tier: "intro" },
+      columns: ["id"],
+      rows: [{ id: "1" }],
+      files: [{
+        path: "data/full.csv",
+        size: "1 KB",
+        downloadUrl: "https://example.com/full.csv",
+        unexpectedFileField: true,
+        mockOnly: { ignored: true },
+        meta: { sha256: "abc123" },
+      }],
+    }],
+  }, { outDir });
+
+  assert.match(result.warnings.join("\n"), /config\.extraTopLevel is not a recognized config field/);
+  assert.match(result.warnings.join("\n"), /config\.mockOnly is not a recognized config field/);
+  assert.match(result.warnings.join("\n"), /config\.site\.unexpectedSiteField is not a recognized config field/);
+  assert.match(result.warnings.join("\n"), /config\.site\.mockOnly is not a recognized config field/);
+  assert.match(result.warnings.join("\n"), /datasets\[0\]\.unexpectedDatasetField is not a recognized config field/);
+  assert.match(result.warnings.join("\n"), /datasets\[0\]\.files\[0\]\.unexpectedFileField is not a recognized config field/);
+  assert.match(result.warnings.join("\n"), /datasets\[0\]\.files\[0\]\.mockOnly is not a recognized config field/);
+  assert.match(result.warnings.join("\n"), /datasets\[0\]\.mockOnly\.unknownMockOnly is not a recognized config field/);
+  assert.match(result.warnings.join("\n"), /datasets\[0\]\.kaggleUsability is deprecated/);
+  assert.match(result.warnings.join("\n"), /datasets\[0\]\.kaggleMedals is deprecated/);
+
+  const manifest = JSON.parse(await readFile(join(outDir, "manifest.json"), "utf8"));
+  assert.deepEqual(manifest.meta, { source: "test-build" });
+  assert.deepEqual(manifest.site.meta, { run: "local" });
+  assert.deepEqual(manifest.datasets[0].meta, { tier: "intro" });
+  assert.deepEqual(manifest.datasets[0].files[0].meta, { sha256: "abc123" });
+  assert.deepEqual(manifest.datasets[0].mockOnly, {
+    kaggleUsability: "9.75",
+    kaggleMedals: "bronze",
+  });
+
+  const kaggleHtml = await readFile(join(outDir, "kaggle/contract-dataset/index.html"), "utf8");
+  assert.match(kaggleHtml, /9\.75/);
+  assert.match(kaggleHtml, /Mock platform-computed value/);
+  assert.match(kaggleHtml, /Mock platform-computed medal: bronze/);
+
+  await assert.rejects(
+    generateSite({
+      datasets: [{
+        title: "Strict Dataset",
+        unexpectedDatasetField: true,
+        columns: ["id"],
+        rows: [{ id: "1" }],
+        files: [{ path: "data/full.csv", size: "1 KB", downloadUrl: "https://example.com/full.csv" }],
+      }],
+    }, { outDir, validation: "strict" }),
+    /Config validation failed:\ndatasets\[0\]\.unexpectedDatasetField is not a recognized config field/,
+  );
+});
+
+test("CLI prints config warnings and fails strict config validation", async () => {
+  const sourceDir = await mkdtemp(join(tmpdir(), "shmuggingface-cli-"));
+  const outDir = join(sourceDir, "dist");
+  const configPath = join(sourceDir, "shmuggingface.config.mjs");
+  await writeFile(configPath, `export default {
+    unexpectedTopLevel: true,
+    datasets: [{
+      title: "CLI Contract",
+      unexpectedDatasetField: true,
+      columns: ["id"],
+      rows: [{ id: "1" }],
+      files: [{ path: "data/full.csv", size: "1 KB", downloadUrl: "https://example.com/full.csv" }]
+    }]
+  };`);
+
+  const warnResult = await execFileAsync(process.execPath, [cliPath, "build", "--config", configPath, "--out", outDir]);
+  assert.match(warnResult.stdout, /Generated \d+ files/);
+  assert.match(warnResult.stderr, /Config warnings:/);
+  assert.match(warnResult.stderr, /config\.unexpectedTopLevel is not a recognized config field/);
+  assert.match(warnResult.stderr, /datasets\[0\]\.unexpectedDatasetField is not a recognized config field/);
+
+  await assert.rejects(
+    execFileAsync(process.execPath, [cliPath, "build", "--config", configPath, "--out", outDir, "--strict-config"]),
+    (error) => {
+      assert.equal(error.code, 1);
+      assert.match(error.stderr, /Config validation failed:/);
+      assert.match(error.stderr, /config\.unexpectedTopLevel is not a recognized config field/);
+      return true;
+    },
+  );
 });
 
 test("generateSite leaves external large-file links out of downloads", async () => {

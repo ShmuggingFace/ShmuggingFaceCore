@@ -45,6 +45,7 @@ export default {
     coverImage: "dataset-cover-image.png",
     license: "CC-BY-4.0 mock",
     task: "tabular-classification",
+    rowCount: 12000,
     tags: ["tabular", "synthetic", "mock-release"],
     splits: ["train", "valid", "test"],
     subsets: ["sock-drawer-benchmark"],
@@ -61,6 +62,30 @@ export default {
     }],
     columns: ["sock_id", "pattern", "pair_probability"],
     rows: [{ sock_id: "sock-0001", pattern: "stripes", pair_probability: "0.98" }],
+    profileStats: {
+      files: {
+        "data/train.csv": {
+          rowCount: 12000,
+          columns: {
+            pattern: {
+              uniqueCount: 4,
+              nullRate: 0,
+              topValues: [
+                { value: "stripes", count: 4200 },
+                { value: "plain", count: 3900 },
+              ],
+            },
+            pair_probability: {
+              uniqueCount: 841,
+              nullRate: 0.002,
+              min: 0.01,
+              max: 0.99,
+              topValues: [{ value: "0.98", count: 38 }],
+            },
+          },
+        },
+      },
+    },
   }],
 };
 ```
@@ -128,6 +153,20 @@ Each dataset entry supports the following release-review fields:
   `["train", "validation", "test"]`.
 - `subsets`: optional Dataset Viewer subset labels. Defaults to the dataset
   slug.
+- `rowCount`: optional dataset-level row count. If omitted, the generator falls
+  back to `profileStats.rowCount` for dataset-level profiles, then preview
+  `rows.length`.
+- `profileStats`: optional profiling metadata for the Shmaggle Data Explorer.
+  Prefer file-scoped profiles under `profileStats.files["path/to/file.csv"]` so
+  the explorer can label them as full-file stats for the active file. A
+  dataset-level profile can also be supplied as `profileStats.rowCount` plus
+  `profileStats.columns`, and the UI labels it as dataset-level stats. Column
+  entries support `uniqueCount`, `nullRate`, `min`, `max`, and `topValues`.
+  `topValues` may contain `{ value, count }` objects, with optional `rate`
+  values.
+- `rows`: preview rows rendered in table surfaces. If `profileStats` is omitted,
+  the Shmaggle Data Explorer derives column summaries only from these preview
+  rows and labels them as preview-sample stats with the sample size.
 - `files[].about`: optional Kaggle Data Explorer "About this file" copy. If it
   is omitted, the mock uses a generic preview description based on the file
   name.

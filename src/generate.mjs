@@ -64,6 +64,7 @@ const DATASET_KEYS = new Set([
   "files",
   "columns",
   "rows",
+  "profileStats",
   "discussions",
   "meta",
   "mockOnly",
@@ -73,6 +74,9 @@ const DATASET_KEYS = new Set([
 ]);
 const FILE_KEYS = new Set(["path", "size", "kind", "sourcePath", "about", "downloadUrl", "storage", "downloadLabel", "meta"]);
 const DATASET_MOCK_ONLY_KEYS = new Set(["kaggleUsability", "kaggleMedals"]);
+const PROFILE_STATS_KEYS = new Set(["rowCount", "columns", "files"]);
+const PROFILE_COLUMN_KEYS = new Set(["uniqueCount", "nullRate", "min", "max", "topValues"]);
+const PROFILE_TOP_VALUE_KEYS = new Set(["value", "count", "rate"]);
 
 function warnUnknownKeys(object, allowed, label, warnings) {
   if (!object || typeof object !== "object" || Array.isArray(object)) return;
@@ -114,6 +118,113 @@ function normalizeDatasetMockOnly(value, label, warnings) {
   return normalized;
 }
 
+function optionalNumber(value, label, warnings) {
+  if (value === undefined) return undefined;
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    warnings.push(`${label} must be a finite number when provided`);
+    return undefined;
+  }
+  return number;
+}
+
+function normalizeTopValues(value, label, warnings) {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) {
+    warnings.push(`${label} must be an array when provided`);
+    return undefined;
+  }
+  return value.map((item, index) => {
+    if (item && typeof item === "object" && !Array.isArray(item)) {
+      warnUnknownKeys(item, PROFILE_TOP_VALUE_KEYS, `${label}[${index}]`, warnings);
+      return {
+        value: item.value,
+        count: optionalNumber(item.count, `${label}[${index}].count`, warnings),
+        rate: optionalNumber(item.rate, `${label}[${index}].rate`, warnings),
+      };
+    }
+    return { value: item };
+  });
+}
+
+function normalizeProfileColumns(value, label, warnings) {
+  if (value === undefined) return {};
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    warnings.push(`${label} must be an object keyed by column name`);
+    return {};
+  }
+  return Object.fromEntries(Object.entries(value).map(([column, stats]) => {
+    if (!stats || typeof stats !== "object" || Array.isArray(stats)) {
+      warnings.push(`${label}.${column} must be an object when provided`);
+      return [column, {}];
+    }
+    const statsLabel = `${label}.${column}`;
+    warnUnknownKeys(stats, PROFILE_COLUMN_KEYS, statsLabel, warnings);
+    return [column, {
+      uniqueCount: optionalNumber(stats.uniqueCount, `${statsLabel}.uniqueCount`, warnings),
+      nullRate: optionalNumber(stats.nullRate, `${statsLabel}.nullRate`, warnings),
+      min: stats.min,
+      max: stats.max,
+      topValues: normalizeTopValues(stats.topValues, `${statsLabel}.topValues`, warnings),
+    }];
+  }));
+}
+
+function hasUsableProfileColumns(columns) {
+  return Object.values(columns).some((stats) => (
+    stats.uniqueCount !== undefined ||
+    stats.nullRate !== undefined ||
+    stats.min !== undefined ||
+    stats.max !== undefined ||
+    (Array.isArray(stats.topValues) && stats.topValues.length > 0)
+  ));
+}
+
+function normalizeProfileStatsShape(value, label, warnings) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    warnings.push(`${label} must be an object when provided`);
+    return null;
+  }
+  warnUnknownKeys(value, PROFILE_STATS_KEYS, label, warnings);
+  const rowCount = optionalNumber(value.rowCount, `${label}.rowCount`, warnings);
+  const columns = normalizeProfileColumns(value.columns, `${label}.columns`, warnings);
+  if (!hasUsableProfileColumns(columns)) {
+    warnings.push(`${label}.columns must include at least one usable column profile`);
+    return null;
+  }
+  return {
+    rowCount,
+    columns,
+  };
+}
+
+function normalizeProfileStats(value, fallbackRows = [], label, warnings) {
+  if (value === undefined) return null;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    warnings.push(`${label} must be an object when provided`);
+    return null;
+  }
+  warnUnknownKeys(value, PROFILE_STATS_KEYS, label, warnings);
+  const datasetProfile = value.columns === undefined ? null : normalizeProfileStatsShape(value, label, warnings);
+  const files = {};
+  if (value.files !== undefined) {
+    if (!value.files || typeof value.files !== "object" || Array.isArray(value.files)) {
+      warnings.push(`${label}.files must be an object keyed by file path`);
+    } else {
+      for (const [path, fileProfile] of Object.entries(value.files)) {
+        const normalized = normalizeProfileStatsShape(fileProfile, `${label}.files.${path}`, warnings);
+        if (normalized) files[path] = normalized;
+      }
+    }
+  }
+  if (!datasetProfile && !Object.keys(files).length) return null;
+  return {
+    rowCount: datasetProfile?.rowCount ?? fallbackRows.length,
+    columns: datasetProfile?.columns ?? {},
+    files,
+  };
+}
+
 function normalizeConfig(config, options = {}) {
   const root = config ?? {};
   const warnings = [];
@@ -149,6 +260,8 @@ function normalizeConfig(config, options = {}) {
       const normalizedFiles = normalizeFiles(files, warnings, index);
       const datasetMeta = optionalObject(dataset.meta, `datasets[${index}].meta`, warnings);
       const mockOnly = normalizeDatasetMockOnly(dataset.mockOnly, `datasets[${index}].mockOnly`, warnings);
+      const rows = Array.isArray(dataset.rows) ? dataset.rows : [];
+      const profileStats = normalizeProfileStats(dataset.profileStats, rows, `datasets[${index}].profileStats`, warnings);
       return {
         slug: slugify(dataset.slug || title),
         title,
@@ -162,7 +275,7 @@ function normalizeConfig(config, options = {}) {
         likes: dataset.likes || "0",
         contactName: dataset.contactName || site.contactName || site.owner || "Dataset reviewer",
         contactEmail: dataset.contactEmail || site.contactEmail || "",
-        rowCount: Number.isFinite(Number(dataset.rowCount)) ? Number(dataset.rowCount) : (dataset.rows || []).length,
+        rowCount: Number.isFinite(Number(dataset.rowCount)) ? Number(dataset.rowCount) : (profileStats?.rowCount ?? rows.length),
         kaggleUsability: mockOnly.kaggleUsability || dataset.kaggleUsability || "Mock-only",
         kaggleMedals: mockOnly.kaggleMedals || dataset.kaggleMedals || "Mock-only",
         meta: datasetMeta,
@@ -175,7 +288,8 @@ function normalizeConfig(config, options = {}) {
         subsets: stringArray(dataset.subsets, [slugify(dataset.slug || title)]),
         files: normalizedFiles,
         columns: dataset.columns || [],
-        rows: dataset.rows || [],
+        rows,
+        profileStats,
         discussions: dataset.discussions || [],
       };
     }),
@@ -319,30 +433,118 @@ function table(dataset) {
   return `<div class="table-shell"><table><thead><tr>${headers}</tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
+function numericValue(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function topValuesFromRows(values, denominator) {
+  const counts = new Map();
+  for (const value of values) {
+    const key = String(value);
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 3)
+    .map(([value, count]) => ({ value, count, rate: denominator ? count / denominator : 0 }));
+}
+
+function sampleProfileStats(columns, rows) {
+  const resolvedColumns = columns.length ? columns : [...new Set(rows.flatMap((row) => Object.keys(row || {})))];
+  const profileColumns = Object.fromEntries(resolvedColumns.map((column) => {
+    const rawValues = rows.map((row) => row[column]);
+    const presentValues = rawValues.filter((value) => value !== undefined && value !== null && value !== "");
+    const numericValues = presentValues.map(numericValue).filter((value) => value !== null);
+    return [column, {
+      uniqueCount: new Set(presentValues.map((value) => String(value))).size,
+      nullRate: rows.length ? (rawValues.length - presentValues.length) / rows.length : 0,
+      min: numericValues.length ? Math.min(...numericValues) : undefined,
+      max: numericValues.length ? Math.max(...numericValues) : undefined,
+      topValues: topValuesFromRows(presentValues, rows.length),
+    }];
+  }));
+  return { rowCount: rows.length, columns: profileColumns };
+}
+
+function profileMetric(profile, column, key) {
+  const value = profile?.columns?.[column]?.[key];
+  return value === undefined || value === null || value === "" ? undefined : value;
+}
+
+function formatPercent(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "0%";
+  const percent = number <= 1 ? number * 100 : number;
+  return `${Math.round(percent * 10) / 10}%`;
+}
+
+function renderTopValues(stats, denominator) {
+  const topValues = Array.isArray(stats.topValues) ? stats.topValues.slice(0, 3) : [];
+  if (!topValues.length) {
+    return `<dl><dt>No non-null values</dt><dd>0%</dd></dl>`;
+  }
+  return `<dl>${topValues.map((item) => {
+    const value = item && typeof item === "object" && !Array.isArray(item) ? item.value : item;
+    const count = item && typeof item === "object" && !Array.isArray(item) ? item.count : undefined;
+    const rate = item && typeof item === "object" && !Array.isArray(item) ? item.rate : undefined;
+    const percent = rate !== undefined ? formatPercent(rate) : (Number.isFinite(Number(count)) && denominator ? formatPercent(Number(count) / denominator) : "");
+    return `<dt>${escapeHtml(value ?? "-")}</dt><dd>${escapeHtml(percent || (count !== undefined ? formatNumber(count) : ""))}</dd>`;
+  }).join("")}</dl>`;
+}
+
+function renderColumnProfile(profile, column) {
+  const stats = profile.columns[column] || {};
+  const uniqueCount = profileMetric(profile, column, "uniqueCount");
+  const nullRate = profileMetric(profile, column, "nullRate");
+  const min = profileMetric(profile, column, "min");
+  const max = profileMetric(profile, column, "max");
+  const details = [
+    uniqueCount !== undefined ? `${formatNumber(uniqueCount)} unique` : "",
+    nullRate !== undefined ? `${formatPercent(nullRate)} null` : "",
+    min !== undefined || max !== undefined ? `${min ?? "-"} - ${max ?? "-"}` : "",
+  ].filter(Boolean);
+  return `<strong>${escapeHtml(uniqueCount !== undefined ? formatNumber(uniqueCount) : "0")}</strong><span>${escapeHtml(details.join(" · ") || "profiled values")}</span>${renderTopValues(stats, profile.rowCount)}`;
+}
+
+function resolveExplorerProfile(dataset, file, rows, columns) {
+  const fileProfile = dataset.profileStats?.files?.[file.path];
+  if (fileProfile) {
+    return {
+      profile: fileProfile,
+      label: `Full-file profile stats (${formatNumber(fileProfile.rowCount ?? dataset.rowCount)} rows)`,
+    };
+  }
+  if (dataset.profileStats && hasUsableProfileColumns(dataset.profileStats.columns)) {
+    return {
+      profile: dataset.profileStats,
+      label: `Dataset-level profile stats (${formatNumber(dataset.profileStats.rowCount ?? dataset.rowCount)} rows)`,
+    };
+  }
+  const sampleProfile = sampleProfileStats(columns, rows);
+  return {
+    profile: sampleProfile,
+    label: `Preview-sample stats (${formatNumber(sampleProfile.rowCount)} rows)`,
+  };
+}
+
 function kaggleDataExplorer(dataset, rowCount) {
   const file = dataset.files.find((item) => item.path.endsWith(".csv")) || dataset.files[0] || { path: `${dataset.slug}.csv`, size: "" };
   const fileName = file.path.split("/").pop() || file.path;
   const fileAbout = file.about || `Preview file for ${fileName}`;
-  const columns = dataset.columns.length ? dataset.columns : ["column"];
+  const columns = dataset.columns.length ? dataset.columns : [...new Set(dataset.rows.flatMap((row) => Object.keys(row || {})))];
+  if (!columns.length) columns.push("column");
   const visibleCount = Math.min(columns.length, 10);
   const rows = dataset.rows.slice(0, 8);
+  const { profile, label: profileLabel } = resolveExplorerProfile(dataset, file, rows, columns);
   const columnIcon = (column) => /url|link|id|name|status|pattern|color|fabric|split/i.test(column) ? "A" : "123";
-  const summaryFor = (column, index) => {
-    const values = rows.map((row) => row[column]).filter((value) => value !== undefined && value !== "");
-    const unique = new Set(values).size || Math.max(1, rowCount - index * 31);
-    if (/probability|score|temperature|rpm|funding|total|amount|size|count/i.test(column)) {
-      return `<strong>${escapeHtml(formatNumber(Math.max(unique, Math.min(rowCount, unique * 17))))}</strong><span>unique values</span>`;
-    }
-    const primary = values[0] ?? "mock";
-    const secondary = values[1] ?? "other";
-    return `<dl><dt>${escapeHtml(primary)}</dt><dd>${Math.max(6, 19 - index)}%</dd><dt>${escapeHtml(secondary)}</dt><dd>${Math.max(2, 9 - index)}%</dd><dt>Other (${escapeHtml(formatNumber(Math.max(rowCount - 1184 - index * 283, 1)))})</dt><dd>${Math.min(94, 78 + index)}%</dd></dl>`;
-  };
   const visibleAttr = (index) => index < visibleCount ? "" : ` data-kg-hidden="true"`;
   const headerCells = columns.map((column, index) => `<th data-kg-col="${index}"${visibleAttr(index)}>
     <div class="kg-de-col-title"><span>${escapeHtml(columnIcon(column))}</span><strong>${escapeHtml(column)}</strong><button type="button" aria-label="Filter ${escapeHtml(column)}">≡</button></div>
     <em>${escapeHtml(index === 0 ? "Link to Organization" : column.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()))}</em>
   </th>`).join("");
-  const profileCells = columns.map((column, index) => `<td data-kg-col="${index}"${visibleAttr(index)}>${summaryFor(column, index)}</td>`).join("");
+  const profileCells = columns.map((column, index) => `<td data-kg-col="${index}"${visibleAttr(index)}>${renderColumnProfile(profile, column)}</td>`).join("");
   const bodyRows = rows.map((row) => `<tr>${columns.map((column, index) => `<td data-kg-col="${index}"${visibleAttr(index)}>${escapeHtml(row[column] ?? "-")}</td>`).join("")}</tr>`).join("");
   return `<section class="kg-data-explorer" data-kg-explorer>
     <div class="kg-de-main">
@@ -368,7 +570,7 @@ function kaggleDataExplorer(dataset, rowCount) {
       <section class="kg-de-about">
         <div>
           <h4>About this file</h4>
-          <p>${escapeHtml(fileAbout)}</p>
+          <p>${escapeHtml(fileAbout)} ${escapeHtml(profileLabel)}.</p>
         </div>
         <button type="button" data-kg-about-suggest>✎ Suggest Edits</button>
       </section>
@@ -389,6 +591,7 @@ function kaggleDataExplorer(dataset, rowCount) {
         <p><span>▸</span><strong>1 file</strong></p>
         <p><span>▸</span><strong>${escapeHtml(String(columns.length))} columns</strong></p>
         <p><span>▸</span><strong>${escapeHtml(formatNumber(rowCount))} rows</strong></p>
+        <p><span>▸</span><strong>${escapeHtml(profileLabel)}</strong></p>
       </section>
     </aside>
   </section>

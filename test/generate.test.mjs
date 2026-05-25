@@ -172,7 +172,7 @@ test("generateSite renders release review config fields", async () => {
   assert.match(hfHtml, />intro</);
   assert.match(hfHtml, />intermediate</);
   assert.match(hfHtml, />advanced</);
-  assert.match(hfHtml, />valid</);
+  assert.match(hfHtml, />valid · 1 rows</);
 
   const kaggleHtml = await readFile(join(outDir, "kaggle/configurable-release/index.html"), "utf8");
   assert.match(kaggleHtml, /<h2>Release Notes<\/h2>/);
@@ -256,6 +256,86 @@ test("generateSite labels dataset-level profileStats honestly", async () => {
   const kaggleHtml = await readFile(join(outDir, "kaggle/dataset-profile-dataset/index.html"), "utf8");
   assert.match(kaggleHtml, /Dataset-level profile stats \(50 rows\)/);
   assert.doesNotMatch(kaggleHtml, /Full-file profile stats/);
+});
+
+test("generateSite renders relational artifact groups and split row counts", async () => {
+  const outDir = await mkdtemp(join(tmpdir(), "shmuggingface-"));
+  const sourceDir = await mkdtemp(join(tmpdir(), "shmuggingface-source-"));
+  await writeFile(join(sourceDir, "customers.csv"), "customer_id,name\n1,Ada\n");
+  await writeFile(join(sourceDir, "orders.csv"), "order_id,customer_id\n1,1\n");
+  await writeFile(join(sourceDir, "README.md"), "# docs\n");
+
+  await generateSite({
+    datasets: [{
+      title: "Relational Release",
+      rowCount: 2000,
+      splits: ["train", "validation"],
+      splitRowCounts: { train: 1500, validation: 500 },
+      columns: ["customer_id", "name"],
+      rows: [{ customer_id: "1", name: "Ada" }],
+      files: [{ path: "legacy/preview.csv", size: "1 KB", downloadUrl: "https://example.com/preview.csv" }],
+      tableGroups: [{
+        title: "Core tables",
+        description: "Normalized relational tables",
+        files: [
+          {
+            path: "tables/customers.csv",
+            size: "2 KB",
+            kind: "CSV",
+            sourcePath: "customers.csv",
+            rowCount: 1200,
+            columnDtypes: { customer_id: "int64", name: "string" },
+            schema: { primaryKey: ["customer_id"], columns: [{ name: "customer_id", dtype: "int64" }] },
+          },
+          {
+            path: "tables/orders.csv",
+            size: "3 KB",
+            kind: "CSV",
+            sourcePath: "orders.csv",
+            rowCount: 800,
+            columnDtypes: { order_id: "int64", customer_id: "int64" },
+          },
+        ],
+      }],
+      docsGroups: [{
+        title: "Release docs",
+        files: [{ path: "docs/README.md", size: "1 KB", kind: "Markdown", sourcePath: "README.md" }],
+      }],
+      notebookGroups: [{
+        title: "Audit notebooks",
+        files: [{ path: "notebooks/audit.ipynb", size: "8 KB", downloadUrl: "https://example.com/audit.ipynb" }],
+      }],
+      validationGroups: [{
+        title: "Validation manifests",
+        files: [{ path: "validation/manifest.json", size: "4 KB", downloadUrl: "https://example.com/manifest.json" }],
+      }],
+    }],
+  }, { outDir, configDir: sourceDir });
+
+  const manifest = JSON.parse(await readFile(join(outDir, "manifest.json"), "utf8"));
+  assert.equal(manifest.datasets[0].files.length, 1);
+  assert.equal(manifest.datasets[0].artifactGroups.length, 4);
+  assert.deepEqual(manifest.datasets[0].splitRowCounts, { train: 1500, validation: 500 });
+  assert.deepEqual(manifest.datasets[0].artifactGroups[0].files[0].columnDtypes, { customer_id: "int64", name: "string" });
+  assert.ok(manifest.datasets[0].allFiles.some((file) => file.path === "tables/customers.csv"));
+
+  const hfHtml = await readFile(join(outDir, "hf/relational-release/index.html"), "utf8");
+  assert.match(hfHtml, /validation · 500 rows/);
+  assert.match(hfHtml, /Core tables/);
+  assert.match(hfHtml, /2 schema columns/);
+  const hfFilesHtml = await readFile(join(outDir, "hf/relational-release/files-and-versions/index.html"), "utf8");
+  assert.match(hfFilesHtml, /Core tables/);
+  assert.match(hfFilesHtml, /Normalized relational tables/);
+  assert.match(hfFilesHtml, /tables\/customers\.csv/);
+  assert.match(hfFilesHtml, /1,200 rows/);
+  const kaggleHtml = await readFile(join(outDir, "kaggle/relational-release/index.html"), "utf8");
+  assert.match(kaggleHtml, /Data files/);
+  assert.match(kaggleHtml, /Core tables/);
+  assert.match(kaggleHtml, /tables\/orders\.csv/);
+  assert.match(kaggleHtml, /train: 1,500, validation: 500/);
+  assert.match(kaggleHtml, /pd\.read_csv\(&quot;tables\/customers\.csv&quot;\)/);
+  assert.equal(await readFile(join(outDir, "downloads/relational-release/tables/customers.csv"), "utf8"), "customer_id,name\n1,Ada\n");
+  assert.equal(await readFile(join(outDir, "downloads/relational-release/docs/README.md"), "utf8"), "# docs\n");
 });
 
 test("generateSite labels row-derived explorer stats as preview-sample stats", async () => {

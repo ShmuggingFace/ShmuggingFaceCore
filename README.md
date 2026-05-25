@@ -163,10 +163,11 @@ Each dataset entry supports the following release-review fields:
   `rows` array. Multi-subset datasets may instead use nested counts such as
   `{ subsetName: { train: 1200, validation: 150 } }`.
 - `huggingFaceValidation`: optional object for Hugging Face-facing checks.
-  Set `enabled: true` on a dataset or pass `--validate-hf` to the CLI to check
-  local README/YAML front matter, local Parquet magic bytes, and split-name
-  safety. Add `loadDataset: true` to attempt a Python
-  `datasets.load_dataset()` round trip against `datasetDir` before publishing.
+  Set `enabled: true` on a dataset or pass `--validate-hf` to the CLI for a
+  dependency-free smoke check of local README front matter, local Parquet magic
+  bytes, and split-name safety. Add `loadDataset: true` to attempt a Python
+  `datasets.load_dataset()` round trip against `datasetDir`, compare loaded
+  split names to `splits`, and compare flat `splitRowCounts` where available.
   The round trip is explicit because it requires Python plus the Hugging Face
   `datasets` package in the downstream environment.
 - `subsets`: optional Dataset Viewer subset labels. Defaults to the dataset
@@ -297,10 +298,12 @@ validationGroups: [{
 
 ShmuggingFaceCore stays a lightweight static generator by default. It does not
 install Python, PyArrow, Hugging Face `datasets`, or a YAML parser. The opt-in
-validation path performs dependency-free checks first:
+validation path performs dependency-free smoke checks first:
 
-- a local dataset-card `README.md` exists and has YAML front matter;
-- local `.parquet` files begin and end with Parquet `PAR1` magic bytes;
+- a local dataset-card `README.md` exists and has parseable-looking YAML front
+  matter with top-level metadata;
+- local `.parquet` files begin and end with Parquet `PAR1` magic bytes without
+  reading the whole file into memory;
 - configured split names avoid spaces and slashes.
 
 To add a Hugging Face round trip in a downstream release job, install the Python
@@ -319,9 +322,10 @@ python -m pip install datasets pyarrow
 npx shmuggingface build --config shmuggingface.config.mjs --out dist --validate-hf --strict-config
 ```
 
-Validation findings are returned in `result.warnings`, printed by the CLI, and
-written to `manifest.json` as `validationWarnings` so review artifacts retain
-the pre-publish check results.
+Hugging Face validation findings are returned as `result.validationWarnings`,
+printed by the CLI, and written to `manifest.json` as `validationWarnings` so
+review artifacts retain the pre-publish check results. Config-contract warnings
+remain separate in `result.warnings`.
 
 ## GitHub Actions
 

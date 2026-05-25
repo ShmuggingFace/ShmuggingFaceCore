@@ -61,6 +61,12 @@ async function main() {
       console.warn(`- ${warning}`);
     }
   }
+  if (result.validationWarnings.length) {
+    console.warn("Hugging Face validation warnings:");
+    for (const warning of result.validationWarnings) {
+      console.warn(`- ${warning}`);
+    }
+  }
   console.log(`Generated ${result.files.length} files in ${result.outDir}`);
 }
 

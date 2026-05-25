@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFile } from "node:child_process";
@@ -581,6 +581,140 @@ test("CLI prints config warnings and fails strict config validation", async () =
       return true;
     },
   );
+});
+
+test("generateSite runs optional Hugging Face validation hooks", async () => {
+  const outDir = await mkdtemp(join(tmpdir(), "shmuggingface-"));
+  const sourceDir = await mkdtemp(join(tmpdir(), "shmuggingface-source-"));
+  await writeFile(join(sourceDir, "README.md"), "---\nlicense: mit\ntask_categories:\n  - text-classification\n---\n# Dataset\n");
+  await writeFile(join(sourceDir, "train.parquet"), Buffer.from("PAR1mock-parquet-footerPAR1"));
+
+  const result = await generateSite({
+    datasets: [{
+      title: "HF Validated",
+      splits: ["train", "bad split"],
+      rows: [{ text: "hello" }],
+      files: [
+        { path: "README.md", size: "1 KB", kind: "Dataset card", sourcePath: "README.md" },
+        { path: "data/train.parquet", size: "1 KB", kind: "Parquet", sourcePath: "train.parquet" },
+      ],
+      huggingFaceValidation: { enabled: true },
+    }],
+  }, { outDir, configDir: sourceDir });
+
+  assert.equal(result.warnings.length, 0);
+  assert.match(result.validationWarnings.join("\n"), /split "bad split" should use a Hugging Face-safe name/);
+  assert.doesNotMatch(result.validationWarnings.join("\n"), /README has no Hugging Face YAML front matter/);
+  assert.doesNotMatch(result.validationWarnings.join("\n"), /does not have Parquet PAR1 magic bytes/);
+  const manifest = JSON.parse(await readFile(join(outDir, "manifest.json"), "utf8"));
+  assert.match(manifest.validationWarnings.join("\n"), /bad split/);
+});
+
+test("generateSite keeps Hugging Face validation off by default", async () => {
+  const outDir = await mkdtemp(join(tmpdir(), "shmuggingface-"));
+  const result = await generateSite({
+    datasets: [{
+      title: "Static Only",
+      splits: ["bad split"],
+      rows: [{ id: "1" }],
+      files: [{ path: "data/full.csv", size: "1 KB", downloadUrl: "https://example.com/full.csv" }],
+    }],
+  }, { outDir });
+
+  assert.deepEqual(result.validationWarnings, []);
+});
+
+test("generateSite reports invalid Hugging Face smoke-check inputs", async () => {
+  const outDir = await mkdtemp(join(tmpdir(), "shmuggingface-"));
+  const sourceDir = await mkdtemp(join(tmpdir(), "shmuggingface-source-"));
+  await writeFile(join(sourceDir, "README.md"), "---\nlicense: 'mit\ntask_categories\n---\n# Dataset\n");
+  await writeFile(join(sourceDir, "bad.parquet"), Buffer.from("not-parquet"));
+
+  const result = await generateSite({
+    datasets: [{
+      title: "HF Invalid",
+      rows: [{ id: "1" }],
+      files: [
+        { path: "README.md", size: "1 KB", kind: "Dataset card", sourcePath: "README.md" },
+        { path: "data/bad.parquet", size: "1 KB", kind: "Parquet", sourcePath: "bad.parquet" },
+      ],
+      huggingFaceValidation: {
+        enabled: "false",
+        loadDataset: "false",
+      },
+    }],
+  }, { outDir, configDir: sourceDir, huggingFaceValidation: true });
+
+  assert.match(result.warnings.join("\n"), /huggingFaceValidation\.enabled must be a boolean/);
+  assert.match(result.warnings.join("\n"), /huggingFaceValidation\.loadDataset must be a boolean/);
+  assert.match(result.validationWarnings.join("\n"), /unbalanced quotes/);
+  assert.match(result.validationWarnings.join("\n"), /could not parse line 2/);
+  assert.match(result.validationWarnings.join("\n"), /does not have Parquet PAR1 magic bytes/);
+});
+
+test("generateSite strict mode fails Hugging Face validation warnings", async () => {
+  const outDir = await mkdtemp(join(tmpdir(), "shmuggingface-"));
+  await assert.rejects(
+    generateSite({
+      datasets: [{
+        title: "Strict HF",
+        splits: ["train set"],
+        rows: [{ id: "1" }],
+        files: [{ path: "data/full.csv", size: "1 KB", downloadUrl: "https://example.com/full.csv" }],
+      }],
+    }, { outDir, huggingFaceValidation: true, validation: "strict" }),
+    /Hugging Face validation failed:[\s\S]*split "train set"/,
+  );
+});
+
+test("generateSite compares load_dataset split names and row counts", async () => {
+  const outDir = await mkdtemp(join(tmpdir(), "shmuggingface-"));
+  const sourceDir = await mkdtemp(join(tmpdir(), "shmuggingface-source-"));
+  const fakePython = join(sourceDir, "fake-python.mjs");
+  await writeFile(join(sourceDir, "README.md"), "---\nlicense: mit\n---\n# Dataset\n");
+  await writeFile(fakePython, `#!/usr/bin/env node
+process.stdout.write(JSON.stringify({ splits: { train: 2, test: 1 } }));
+`);
+  await chmod(fakePython, 0o755);
+
+  const result = await generateSite({
+    datasets: [{
+      title: "HF Round Trip",
+      splits: ["train", "validation"],
+      splitRowCounts: { train: 3 },
+      rows: [{ id: "1" }],
+      files: [{ path: "README.md", size: "1 KB", kind: "Dataset card", sourcePath: "README.md" }],
+      huggingFaceValidation: {
+        enabled: true,
+        loadDataset: true,
+        python: fakePython,
+      },
+    }],
+  }, { outDir, configDir: sourceDir });
+
+  assert.match(result.validationWarnings.join("\n"), /did not expose configured split "validation"/);
+  assert.match(result.validationWarnings.join("\n"), /split "train" loaded 2 rows but config expects 3/);
+});
+
+test("CLI --validate-hf surfaces Hugging Face validation warnings", async () => {
+  const sourceDir = await mkdtemp(join(tmpdir(), "shmuggingface-cli-hf-"));
+  const outDir = join(sourceDir, "dist");
+  const configPath = join(sourceDir, "shmuggingface.config.mjs");
+  await writeFile(configPath, `export default {
+    datasets: [{
+      title: "CLI HF Validation",
+      splits: ["train set"],
+      rows: [{ id: "1" }],
+      files: [{ path: "data/full.csv", size: "1 KB", downloadUrl: "https://example.com/full.csv" }]
+    }]
+  };`);
+
+  const result = await execFileAsync(process.execPath, [cliPath, "build", "--config", configPath, "--out", outDir, "--validate-hf"]);
+  assert.match(result.stdout, /Generated \d+ files/);
+  assert.doesNotMatch(result.stderr, /Config warnings:/);
+  assert.match(result.stderr, /Hugging Face validation warnings:/);
+  assert.match(result.stderr, /split "train set" should use a Hugging Face-safe name/);
+  assert.match(result.stderr, /could not find a local README\.md source/);
 });
 
 test("generateSite leaves external large-file links out of downloads", async () => {

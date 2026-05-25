@@ -1,5 +1,9 @@
-import { copyFile, mkdir, rm, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { copyFile, mkdir, open, readFile, rm, writeFile } from "node:fs/promises";
 import { extname, join, resolve } from "node:path";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
 
 const MOCK_NOTICE =
   "This is a ShmuggingFace review mock. It is not Hugging Face, Kaggle, or a real dataset release.";
@@ -71,6 +75,7 @@ const DATASET_KEYS = new Set([
   "rows",
   "profileStats",
   "splitRowCounts",
+  "huggingFaceValidation",
   "discussions",
   "meta",
   "mockOnly",
@@ -91,6 +96,8 @@ const DATASET_MOCK_ONLY_KEYS = new Set(["kaggleUsability", "kaggleMedals"]);
 const PROFILE_STATS_KEYS = new Set(["rowCount", "columns", "files"]);
 const PROFILE_COLUMN_KEYS = new Set(["uniqueCount", "nullRate", "min", "max", "topValues"]);
 const PROFILE_TOP_VALUE_KEYS = new Set(["value", "count", "rate"]);
+const HUGGING_FACE_VALIDATION_KEYS = new Set(["enabled", "readmePath", "datasetDir", "loadDataset", "python", "configName"]);
+const HF_SPLIT_NAME_PATTERN = /^[A-Za-z0-9._-]+$/;
 
 function warnUnknownKeys(object, allowed, label, warnings) {
   if (!object || typeof object !== "object" || Array.isArray(object)) return;
@@ -228,6 +235,15 @@ function optionalNumber(value, label, warnings) {
   return number;
 }
 
+function optionalBoolean(value, label, warnings) {
+  if (value === undefined) return false;
+  if (typeof value !== "boolean") {
+    warnings.push(`${label} must be a boolean when provided`);
+    return false;
+  }
+  return value;
+}
+
 function normalizeTopValues(value, label, warnings) {
   if (value === undefined) return undefined;
   if (!Array.isArray(value)) {
@@ -325,6 +341,23 @@ function normalizeProfileStats(value, fallbackRows = [], label, warnings) {
   };
 }
 
+function normalizeHuggingFaceValidation(value, label, warnings) {
+  if (value === undefined) return {};
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    warnings.push(`${label} must be an object when provided`);
+    return {};
+  }
+  warnUnknownKeys(value, HUGGING_FACE_VALIDATION_KEYS, label, warnings);
+  return {
+    enabled: optionalBoolean(value.enabled, `${label}.enabled`, warnings),
+    readmePath: value.readmePath ? String(value.readmePath) : "",
+    datasetDir: value.datasetDir ? String(value.datasetDir) : "",
+    loadDataset: optionalBoolean(value.loadDataset, `${label}.loadDataset`, warnings),
+    python: value.python ? String(value.python) : "",
+    configName: value.configName ? String(value.configName) : "",
+  };
+}
+
 function normalizeConfig(config, options = {}) {
   const root = config ?? {};
   const warnings = [];
@@ -364,6 +397,7 @@ function normalizeConfig(config, options = {}) {
       const rows = Array.isArray(dataset.rows) ? dataset.rows : [];
       const profileStats = normalizeProfileStats(dataset.profileStats, rows, `datasets[${index}].profileStats`, warnings);
       const splitRowCounts = normalizeSplitRowCounts(dataset.splitRowCounts, `datasets[${index}].splitRowCounts`, warnings);
+      const huggingFaceValidation = normalizeHuggingFaceValidation(dataset.huggingFaceValidation, `datasets[${index}].huggingFaceValidation`, warnings);
       return {
         slug: slugify(dataset.slug || title),
         title,
@@ -394,6 +428,7 @@ function normalizeConfig(config, options = {}) {
         columns: dataset.columns || [],
         rows,
         profileStats,
+        huggingFaceValidation,
         discussions: dataset.discussions || [],
       };
     }),
@@ -402,6 +437,207 @@ function normalizeConfig(config, options = {}) {
     throw new Error(`Config validation failed:\n${warnings.join("\n")}`);
   }
   return { ...model, warnings };
+}
+
+function shouldValidateHuggingFace(dataset, options) {
+  return options.huggingFaceValidation === true || dataset.huggingFaceValidation?.enabled === true;
+}
+
+function localFileForDatasetFile(datasetFile, options) {
+  if (!datasetFile?.sourcePath) return "";
+  return resolve(options.configDir || process.cwd(), datasetFile.sourcePath);
+}
+
+function findReadmeFile(dataset, options) {
+  const configured = dataset.huggingFaceValidation?.readmePath;
+  if (configured) {
+    return resolve(options.configDir || process.cwd(), configured);
+  }
+  const readme = datasetFiles(dataset).find((file) => /(^|\/)README\.md$/i.test(file.path) && file.sourcePath);
+  return readme ? localFileForDatasetFile(readme, options) : "";
+}
+
+async function validateReadmeYaml(dataset, options, warnings) {
+  const readmePath = findReadmeFile(dataset, options);
+  if (!readmePath) {
+    warnings.push(`datasets.${dataset.slug}.huggingFaceValidation could not find a local README.md source for dataset-card YAML validation`);
+    return;
+  }
+  let contents;
+  try {
+    contents = await readFile(readmePath, "utf8");
+  } catch (error) {
+    warnings.push(`datasets.${dataset.slug}.huggingFaceValidation could not read README at ${readmePath}: ${error.message}`);
+    return;
+  }
+  if (!contents.trim()) {
+    warnings.push(`datasets.${dataset.slug}.huggingFaceValidation README is empty`);
+    return;
+  }
+  if (!contents.startsWith("---\n")) {
+    warnings.push(`datasets.${dataset.slug}.huggingFaceValidation README has no Hugging Face YAML front matter for the dependency-free smoke check`);
+    return;
+  }
+  const end = contents.indexOf("\n---", 4);
+  if (end === -1) {
+    warnings.push(`datasets.${dataset.slug}.huggingFaceValidation README YAML front matter is not closed`);
+    return;
+  }
+  const yaml = contents.slice(4, end).trim();
+  if (!yaml) {
+    warnings.push(`datasets.${dataset.slug}.huggingFaceValidation README YAML front matter is empty`);
+    return;
+  }
+  validateYamlFrontMatterSmoke(dataset, yaml, warnings);
+}
+
+function validateYamlFrontMatterSmoke(dataset, yaml, warnings) {
+  const lines = yaml.split("\n");
+  const topLevelKeys = new Set();
+  let previousKeyAllowsList = false;
+  for (const [index, rawLine] of lines.entries()) {
+    if (!rawLine.trim() || rawLine.trim().startsWith("#")) continue;
+    if (rawLine.includes("\t")) {
+      warnings.push(`datasets.${dataset.slug}.huggingFaceValidation README YAML smoke check found a tab indentation on line ${index + 1}`);
+    }
+    const trimmed = rawLine.trim();
+    if (trimmed.startsWith("- ")) {
+      if (!previousKeyAllowsList && !/^\s+-\s+\S/.test(rawLine)) {
+        warnings.push(`datasets.${dataset.slug}.huggingFaceValidation README YAML smoke check found a list item without a parent key on line ${index + 1}`);
+      }
+      continue;
+    }
+    const pair = rawLine.match(/^([A-Za-z0-9_-]+):(?:\s*(.*))?$/);
+    if (!pair) {
+      warnings.push(`datasets.${dataset.slug}.huggingFaceValidation README YAML smoke check could not parse line ${index + 1}: ${trimmed}`);
+      previousKeyAllowsList = false;
+      continue;
+    }
+    topLevelKeys.add(pair[1]);
+    const value = pair[2] || "";
+    previousKeyAllowsList = value === "";
+    const singleQuotes = (value.match(/'/g) || []).length;
+    const doubleQuotes = (value.match(/"/g) || []).length;
+    if (singleQuotes % 2 !== 0 || doubleQuotes % 2 !== 0) {
+      warnings.push(`datasets.${dataset.slug}.huggingFaceValidation README YAML smoke check found unbalanced quotes on line ${index + 1}`);
+    }
+  }
+  if (!topLevelKeys.size) {
+    warnings.push(`datasets.${dataset.slug}.huggingFaceValidation README YAML front matter has no top-level metadata keys`);
+  }
+  if (!topLevelKeys.has("license")) {
+    warnings.push(`datasets.${dataset.slug}.huggingFaceValidation README YAML smoke check did not find a license key`);
+  }
+}
+
+async function validateParquetFiles(dataset, options, warnings) {
+  const parquetFiles = datasetFiles(dataset).filter((file) => /\.parquet$/i.test(file.path));
+  for (const file of parquetFiles) {
+    if (!file.sourcePath) {
+      warnings.push(`datasets.${dataset.slug}.huggingFaceValidation cannot inspect ${file.path}; it uses downloadUrl or has no local sourcePath`);
+      continue;
+    }
+    const source = localFileForDatasetFile(file, options);
+    let handle;
+    try {
+      handle = await open(source, "r");
+      const { size } = await handle.stat();
+      if (size < 8) {
+        warnings.push(`datasets.${dataset.slug}.huggingFaceValidation ${file.path} is too small to be a Parquet file`);
+        continue;
+      }
+      const header = Buffer.alloc(4);
+      const footer = Buffer.alloc(4);
+      await handle.read(header, 0, 4, 0);
+      await handle.read(footer, 0, 4, size - 4);
+      const startsWithMagic = header.toString("utf8") === "PAR1";
+      const endsWithMagic = footer.toString("utf8") === "PAR1";
+      if (!startsWithMagic || !endsWithMagic) {
+        warnings.push(`datasets.${dataset.slug}.huggingFaceValidation ${file.path} does not have Parquet PAR1 magic bytes`);
+      }
+    } catch (error) {
+      warnings.push(`datasets.${dataset.slug}.huggingFaceValidation could not read Parquet file ${file.path}: ${error.message}`);
+    } finally {
+      await handle?.close();
+    }
+  }
+}
+
+function validateSplitNames(dataset, warnings) {
+  for (const split of dataset.splits) {
+    if (!split || !HF_SPLIT_NAME_PATTERN.test(split)) {
+      warnings.push(`datasets.${dataset.slug}.huggingFaceValidation split "${split}" should use a Hugging Face-safe name without spaces or slashes`);
+    }
+  }
+}
+
+async function validateLoadDataset(dataset, options, warnings) {
+  if (!dataset.huggingFaceValidation?.loadDataset) return;
+  const python = dataset.huggingFaceValidation.python || "python3";
+  const datasetDir = resolve(options.configDir || process.cwd(), dataset.huggingFaceValidation.datasetDir || ".");
+  const args = [
+    "-c",
+    [
+      "from datasets import load_dataset",
+      "import json",
+      "import sys",
+      "path = sys.argv[1]",
+      "name = sys.argv[2] or None",
+      "dataset = load_dataset(path, name=name) if name else load_dataset(path)",
+      "if hasattr(dataset, 'keys'):",
+      "    splits = {str(key): len(value) for key, value in dataset.items()}",
+      "else:",
+      "    splits = {'train': len(dataset)}",
+      "print(json.dumps({'splits': splits}, sort_keys=True))",
+    ].join("\n"),
+    datasetDir,
+    dataset.huggingFaceValidation.configName || "",
+  ];
+  try {
+    const result = await execFileAsync(python, args, { timeout: 60000 });
+    validateLoadedDatasetShape(dataset, result.stdout, warnings);
+  } catch (error) {
+    const output = [error.stderr, error.stdout, error.message].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+    warnings.push(`datasets.${dataset.slug}.huggingFaceValidation datasets.load_dataset() failed for ${datasetDir}: ${output}`);
+  }
+}
+
+function validateLoadedDatasetShape(dataset, stdout, warnings) {
+  let payload;
+  try {
+    payload = JSON.parse(stdout.trim());
+  } catch {
+    warnings.push(`datasets.${dataset.slug}.huggingFaceValidation datasets.load_dataset() did not return parseable split metadata`);
+    return;
+  }
+  const loadedSplits = payload?.splits && typeof payload.splits === "object" && !Array.isArray(payload.splits)
+    ? payload.splits
+    : {};
+  const loadedNames = new Set(Object.keys(loadedSplits));
+  for (const split of dataset.splits) {
+    if (!loadedNames.has(split)) {
+      warnings.push(`datasets.${dataset.slug}.huggingFaceValidation datasets.load_dataset() did not expose configured split "${split}"`);
+    }
+  }
+  for (const [split, expected] of Object.entries(dataset.splitRowCounts || {})) {
+    if (expected && typeof expected === "object") continue;
+    if (!loadedNames.has(split)) continue;
+    if (Number.isFinite(Number(expected)) && Number(loadedSplits[split]) !== Number(expected)) {
+      warnings.push(`datasets.${dataset.slug}.huggingFaceValidation split "${split}" loaded ${loadedSplits[split]} rows but config expects ${expected}`);
+    }
+  }
+}
+
+async function collectHuggingFaceValidationWarnings(model, options) {
+  const warnings = [];
+  for (const dataset of model.datasets) {
+    if (!shouldValidateHuggingFace(dataset, options)) continue;
+    validateSplitNames(dataset, warnings);
+    await validateReadmeYaml(dataset, options, warnings);
+    await validateParquetFiles(dataset, options, warnings);
+    await validateLoadDataset(dataset, options, warnings);
+  }
+  return warnings;
 }
 
 function datasetDescriptionHtml(dataset) {
@@ -1791,6 +2027,10 @@ async function copyCoverImage(outDir, dataset, options, files) {
 
 export async function generateSite(config, options = {}) {
   const model = normalizeConfig(config, options);
+  const validationWarnings = await collectHuggingFaceValidationWarnings(model, options);
+  if (validationWarnings.length && options.validation === "strict") {
+    throw new Error(`Hugging Face validation failed:\n${validationWarnings.join("\n")}`);
+  }
   const { warnings, ...manifestModel } = model;
   const outDir = resolve(options.outDir || "dist");
   const files = [];
@@ -1798,7 +2038,7 @@ export async function generateSite(config, options = {}) {
   await mkdir(outDir, { recursive: true });
   await write(outDir, "index.html", renderHome(model), files);
   await write(outDir, "assets/styles.css", styles() + hfSpecificStyles() + kaggleSpecificStyles() + kaggleAlignmentStyles() + kaggleTabStyles() + kaggleExplorerStyles() + kaggleFidelityStyles() + kagglePrecisionStyles() + kaggleMeasuredFontCalibrationStyles() + homePageStyles() + relationalArtifactStyles(), files);
-  await write(outDir, "manifest.json", JSON.stringify({ ...manifestModel, mockNotice: MOCK_NOTICE }, null, 2), files);
+  await write(outDir, "manifest.json", JSON.stringify({ ...manifestModel, mockNotice: MOCK_NOTICE, validationWarnings }, null, 2), files);
   for (const dataset of model.datasets) {
     await write(outDir, `hf/${dataset.slug}/index.html`, renderHf(model, dataset), files);
     await write(outDir, `hf/${dataset.slug}/data-studio/index.html`, renderHfDataStudio(model, dataset), files);
@@ -1813,5 +2053,5 @@ export async function generateSite(config, options = {}) {
     }
     await copyCoverImage(outDir, dataset, options, files);
   }
-  return { outDir, files, warnings };
+  return { outDir, files, warnings, validationWarnings };
 }

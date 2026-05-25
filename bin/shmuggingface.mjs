@@ -21,13 +21,14 @@ function printHelp() {
   console.log(`shmuggingface
 
 Usage:
-  shmuggingface build --config shmuggingface.config.mjs --out dist [--strict-config]
+  shmuggingface build --config shmuggingface.config.mjs --out dist [--strict-config] [--validate-hf]
 
 Commands:
   build    Generate a static Cloudflare Pages-ready review app.
 
 Options:
   --strict-config    Fail when the config contains deprecated or unknown fields.
+  --validate-hf      Run optional Hugging Face-facing validation checks.
 `);
 }
 
@@ -52,10 +53,17 @@ async function main() {
     outDir,
     configDir: resolve(configPath, ".."),
     validation: hasFlag(args, "--strict-config") ? "strict" : "warn",
+    huggingFaceValidation: hasFlag(args, "--validate-hf"),
   });
   if (result.warnings.length) {
     console.warn("Config warnings:");
     for (const warning of result.warnings) {
+      console.warn(`- ${warning}`);
+    }
+  }
+  if (result.validationWarnings.length) {
+    console.warn("Hugging Face validation warnings:");
+    for (const warning of result.validationWarnings) {
       console.warn(`- ${warning}`);
     }
   }

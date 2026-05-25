@@ -32,13 +32,26 @@ Current context: v1.0.1 does consume `descriptionHtml`, `coverImage`, `splits`,
 question is not whether those fields are ignored, but how Core should protect
 future integrations from silent config drift.
 
+**[MEDIUM-SF2] Core should commit to a plain-data config contract.**
+
+Downstream integrations can reasonably generate `shmuggingface.config.mjs`
+programmatically from Python, Ruby, Go, shell scripts, CI jobs, or other release
+pipelines. The current README examples use `export default <object>`, and
+LeadForge implemented against that plain-data convention.
+
+Core should document that a config may be a plain JSON-serializable object export
+and that dynamic JavaScript expressions, imports, or runtime computation will not
+be required for the default integration path. Dynamic JS can remain allowed as an
+advanced option, but it should not become the only supported config shape without
+a major-version break and migration path.
+
 ---
 
 ## Framework Feature Gaps
 
 ### MEDIUM
 
-**[MEDIUM-SF2] Core needs either full-file profiling or explicit sample-only stats.**
+**[MEDIUM-SF3] Core needs either full-file profiling or explicit sample-only stats.**
 
 Downstream integrations commonly pass only preview rows to Core. If Core computes
 visible distributions from those rows, the Shmaggle explorer can make sample-only
@@ -51,7 +64,15 @@ For high-fidelity review, Core should either:
   provided; or
 - label those summaries as preview-sample summaries.
 
-**[MEDIUM-SF3] The config model is still shallow for relational, multi-artifact datasets.**
+The LeadForge rebuttal sharpened this into two concrete framework requests:
+
+- add a `profileStats` or equivalent config key for precomputed full-file
+  statistics such as row count, unique counts, min/max, top values, and null
+  rates;
+- until that exists, label summaries computed from `rows` as sample-derived,
+  including the sample size.
+
+**[MEDIUM-SF4] The config model is still shallow for relational, multi-artifact datasets.**
 
 The current config model is appropriate for reviewing presentation, copy, file
 lists, table previews, discussions, and download affordances. It is less
@@ -69,7 +90,7 @@ Likely v2 needs:
 Core already supports file entries with `sourcePath` and `downloadUrl`, so this
 is about higher-level semantics rather than basic download backing.
 
-**[MEDIUM-SF4] The mock cannot represent the real Hugging Face Dataset Viewer.**
+**[MEDIUM-SF5] The mock cannot represent the real Hugging Face Dataset Viewer.**
 
 A reviewer checking the HF preview is checking layout, copy, metadata, and
 mocked affordances, not the actual hosted Hugging Face Dataset Viewer behavior
@@ -79,7 +100,7 @@ A higher-fidelity v2 could validate HF YAML frontmatter and Parquet files agains
 what `datasets.load_dataset()` would produce, then surface warnings next to the
 mock page.
 
-**[MEDIUM-SF5] Fake community and activity widgets need clearer semantics.**
+**[MEDIUM-SF6] Fake community and activity widgets need clearer semantics.**
 
 Core intentionally supports mock downloads, discussions, and other review
 affordances. For pre-publication review, fake community/activity chrome can
@@ -88,6 +109,12 @@ still cause reviewers to evaluate nonexistent platform behavior.
 The prominent mock notice is valuable and should stay. Core should also consider
 neutralizing or labeling platform-computed values such as medals, community
 counts, views, and downloads when they are mock-only.
+
+The rebuttal specifically calls out `kaggleUsability` and `kaggleMedals`: because
+they are exposed as first-class config fields, integrators can reasonably read
+them as legitimate maintainer-controlled values. Core should remove these fields,
+deprecate them, or document them as `mock-only` with a clear warning that real
+review configs should not set platform-computed values.
 
 ---
 
@@ -114,7 +141,9 @@ if richer validation hooks are added later.
 Highest-impact Core follow-ups:
 
 1. Add explicit config validation or warnings for unknown fields.
-2. Add full-file profile stats support, or clearly mark sample-only summaries.
-3. Expand the config model for relational, multi-artifact dataset families.
-4. Add optional HF round-trip validation against real dataset artifacts.
-5. Clarify mock-only community/activity values in the generated UI.
+2. Document the plain-data config contract for generated configs.
+3. Add full-file `profileStats` support, or clearly mark sample-only summaries.
+4. Expand the config model for relational, multi-artifact dataset families.
+5. Add optional HF round-trip validation against real dataset artifacts.
+6. Remove, deprecate, or clearly mark mock-only platform-computed fields such as
+   `kaggleUsability` and `kaggleMedals`.

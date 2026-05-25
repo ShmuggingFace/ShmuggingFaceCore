@@ -21,8 +21,10 @@ export default {
       language: "English",
       downloads: "1,337",
       likes: "42",
-      kaggleUsability: "9.1",
-      kaggleMedals: "Socksilver",
+      mockOnly: {
+        kaggleUsability: "9.1",
+        kaggleMedals: "Socksilver",
+      },
       tags: ["tabular", "classification", "synthetic", "mock-release"],
       splits: ["train", "valid", "test"],
       subsets: ["sock-drawer-benchmark"],
@@ -51,8 +53,10 @@ export default {
       language: "n/a",
       downloads: "256",
       likes: "19",
-      kaggleUsability: "8.7",
-      kaggleMedals: "Porcelain",
+      mockOnly: {
+        kaggleUsability: "8.7",
+        kaggleMedals: "Porcelain",
+      },
       tags: ["images", "computer-vision", "synthetic", "mock-release"],
       files: [
         { path: "images/sample_manifest.csv", size: "11 KB", kind: "CSV", sourcePath: "images/sample_manifest.csv" },

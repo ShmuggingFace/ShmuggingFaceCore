@@ -13,14 +13,21 @@ function readFlag(args, name, fallback) {
   return value;
 }
 
+function hasFlag(args, name) {
+  return args.includes(name);
+}
+
 function printHelp() {
   console.log(`shmuggingface
 
 Usage:
-  shmuggingface build --config shmuggingface.config.mjs --out dist
+  shmuggingface build --config shmuggingface.config.mjs --out dist [--strict-config]
 
 Commands:
   build    Generate a static Cloudflare Pages-ready review app.
+
+Options:
+  --strict-config    Fail when the config contains deprecated or unknown fields.
 `);
 }
 
@@ -41,7 +48,17 @@ async function main() {
   if (!config) {
     throw new Error(`Config ${configPath} must export default or named config`);
   }
-  const result = await generateSite(config, { outDir, configDir: resolve(configPath, "..") });
+  const result = await generateSite(config, {
+    outDir,
+    configDir: resolve(configPath, ".."),
+    validation: hasFlag(args, "--strict-config") ? "strict" : "warn",
+  });
+  if (result.warnings.length) {
+    console.warn("Config warnings:");
+    for (const warning of result.warnings) {
+      console.warn(`- ${warning}`);
+    }
+  }
   console.log(`Generated ${result.files.length} files in ${result.outDir}`);
 }
 

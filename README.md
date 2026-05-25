@@ -48,6 +48,10 @@ export default {
     tags: ["tabular", "synthetic", "mock-release"],
     splits: ["train", "valid", "test"],
     subsets: ["sock-drawer-benchmark"],
+    mockOnly: {
+      kaggleUsability: "9.1",
+      kaggleMedals: "Socksilver",
+    },
     files: [{
       path: "data/train.csv",
       size: "18 KB",
@@ -83,6 +87,30 @@ During local development from this repository:
 npm run build:demo
 ```
 
+## Config Contract
+
+`shmuggingface.config.mjs` should export plain JSON-serializable data. Keep build
+logic in a separate script that writes the config, then let ShmuggingFaceCore
+render that data into the review app.
+
+The generator warns on unknown fields and deprecated compatibility fields:
+
+```js
+const result = await generateSite(config, { outDir: "dist" });
+console.log(result.warnings);
+```
+
+Use strict validation in CI when you want those warnings to fail the build:
+
+```sh
+npx shmuggingface build --config shmuggingface.config.mjs --out dist --strict-config
+```
+
+Use `meta` for downstream-only metadata that the generator should preserve as
+opaque config context in `manifest.json`. Use dataset-level `mockOnly` for
+values that intentionally simulate platform-computed state and should never be
+confused with real provider data.
+
 ## Dataset Config Fields
 
 Each dataset entry supports the following release-review fields:
@@ -103,6 +131,22 @@ Each dataset entry supports the following release-review fields:
 - `files[].about`: optional Kaggle Data Explorer "About this file" copy. If it
   is omitted, the mock uses a generic preview description based on the file
   name.
+- `meta`: optional opaque downstream metadata. The generator preserves this in
+  `manifest.json` and does not interpret fields inside this object. `meta` is
+  also accepted on `site` and `files[]`.
+- `mockOnly.kaggleUsability`: optional Kaggle-style usability score used only in
+  the mock UI. In real Kaggle this is platform-computed.
+- `mockOnly.kaggleMedals`: optional Kaggle-style medal indicator used only in
+  the mock UI. In real Kaggle this is platform-computed.
+
+Deprecated compatibility aliases:
+
+- `kaggleUsability`
+- `kaggleMedals`
+
+They still render for older configs, but new downstream integrations should use
+`mockOnly.kaggleUsability` and `mockOnly.kaggleMedals` so mock-only
+platform-computed values stay explicit.
 
 ## Cloudflare Pages
 

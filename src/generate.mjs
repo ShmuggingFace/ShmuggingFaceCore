@@ -39,22 +39,116 @@ function requireString(object, key, label) {
   return value;
 }
 
-function normalizeConfig(config) {
-  const site = config.site ?? {};
-  const datasets = config.datasets ?? [];
+const TOP_LEVEL_KEYS = new Set(["site", "datasets", "meta"]);
+const SITE_KEYS = new Set(["title", "owner", "visibility", "reviewerHint", "contactName", "contactEmail", "meta"]);
+const DATASET_KEYS = new Set([
+  "slug",
+  "title",
+  "owner",
+  "subtitle",
+  "license",
+  "task",
+  "language",
+  "updated",
+  "downloads",
+  "likes",
+  "contactName",
+  "contactEmail",
+  "rowCount",
+  "description",
+  "descriptionHtml",
+  "tags",
+  "coverImage",
+  "splits",
+  "subsets",
+  "files",
+  "columns",
+  "rows",
+  "discussions",
+  "meta",
+  "mockOnly",
+  // Deprecated compatibility fields. Prefer mockOnly.kaggleUsability/kaggleMedals.
+  "kaggleUsability",
+  "kaggleMedals",
+]);
+const FILE_KEYS = new Set(["path", "size", "kind", "sourcePath", "about", "downloadUrl", "storage", "downloadLabel", "meta"]);
+const DATASET_MOCK_ONLY_KEYS = new Set(["kaggleUsability", "kaggleMedals"]);
+
+function warnUnknownKeys(object, allowed, label, warnings) {
+  if (!object || typeof object !== "object" || Array.isArray(object)) return;
+  for (const key of Object.keys(object)) {
+    if (!allowed.has(key)) {
+      warnings.push(`${label}.${key} is not a recognized config field`);
+    }
+  }
+}
+
+function optionalObject(value, label, warnings) {
+  if (value === undefined) return {};
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    warnings.push(`${label} must be an object when provided`);
+    return {};
+  }
+  return value;
+}
+
+function normalizeFiles(files, warnings, datasetIndex) {
+  return files.map((file, fileIndex) => {
+    warnUnknownKeys(file, FILE_KEYS, `datasets[${datasetIndex}].files[${fileIndex}]`, warnings);
+    return {
+      ...file,
+      meta: optionalObject(file.meta, `datasets[${datasetIndex}].files[${fileIndex}].meta`, warnings),
+    };
+  });
+}
+
+function normalizeDatasetMockOnly(value, label, warnings) {
+  const mockOnly = optionalObject(value, label, warnings);
+  warnUnknownKeys(mockOnly, DATASET_MOCK_ONLY_KEYS, label, warnings);
+  const normalized = {};
+  for (const key of DATASET_MOCK_ONLY_KEYS) {
+    if (mockOnly[key] !== undefined) {
+      normalized[key] = mockOnly[key];
+    }
+  }
+  return normalized;
+}
+
+function normalizeConfig(config, options = {}) {
+  const root = config ?? {};
+  const warnings = [];
+  warnUnknownKeys(root, TOP_LEVEL_KEYS, "config", warnings);
+  const site = root.site ?? {};
+  warnUnknownKeys(site, SITE_KEYS, "config.site", warnings);
+  const rootMeta = optionalObject(root.meta, "config.meta", warnings);
+  const siteMeta = optionalObject(site.meta, "config.site.meta", warnings);
+  const datasets = root.datasets ?? [];
   if (!Array.isArray(datasets) || datasets.length === 0) {
     throw new Error("config.datasets must contain at least one dataset");
   }
-  return {
+  const model = {
+    meta: rootMeta,
     site: {
       title: site.title || "ShmuggingFace review mock",
       owner: site.owner || "Dataset team",
       visibility: site.visibility || "public mock",
       reviewerHint: site.reviewerHint || "Review the release story, previews, file list, and download behavior before publishing.",
       primarySlug: slugify(datasets[0]?.slug || datasets[0]?.title || "dataset"),
+      meta: siteMeta,
     },
     datasets: datasets.map((dataset, index) => {
+      warnUnknownKeys(dataset, DATASET_KEYS, `datasets[${index}]`, warnings);
       const title = requireString(dataset, "title", `datasets[${index}]`);
+      if (dataset.kaggleUsability !== undefined) {
+        warnings.push(`datasets[${index}].kaggleUsability is deprecated; use mockOnly.kaggleUsability and label it as mock-only`);
+      }
+      if (dataset.kaggleMedals !== undefined) {
+        warnings.push(`datasets[${index}].kaggleMedals is deprecated; use mockOnly.kaggleMedals and label it as mock-only`);
+      }
+      const files = Array.isArray(dataset.files) ? dataset.files : [];
+      const normalizedFiles = normalizeFiles(files, warnings, index);
+      const datasetMeta = optionalObject(dataset.meta, `datasets[${index}].meta`, warnings);
+      const mockOnly = normalizeDatasetMockOnly(dataset.mockOnly, `datasets[${index}].mockOnly`, warnings);
       return {
         slug: slugify(dataset.slug || title),
         title,
@@ -69,21 +163,27 @@ function normalizeConfig(config) {
         contactName: dataset.contactName || site.contactName || site.owner || "Dataset reviewer",
         contactEmail: dataset.contactEmail || site.contactEmail || "",
         rowCount: Number.isFinite(Number(dataset.rowCount)) ? Number(dataset.rowCount) : (dataset.rows || []).length,
-        kaggleUsability: dataset.kaggleUsability || "8.8",
-        kaggleMedals: dataset.kaggleMedals || "Bronze",
+        kaggleUsability: mockOnly.kaggleUsability || dataset.kaggleUsability || "Mock-only",
+        kaggleMedals: mockOnly.kaggleMedals || dataset.kaggleMedals || "Mock-only",
+        meta: datasetMeta,
+        mockOnly,
         description: dataset.description || "",
         descriptionHtml: dataset.descriptionHtml || "",
         tags: dataset.tags || [],
         coverImage: dataset.coverImage || "",
         splits: stringArray(dataset.splits, ["train", "validation", "test"]),
         subsets: stringArray(dataset.subsets, [slugify(dataset.slug || title)]),
-        files: dataset.files || [],
+        files: normalizedFiles,
         columns: dataset.columns || [],
         rows: dataset.rows || [],
         discussions: dataset.discussions || [],
       };
     }),
   };
+  if (warnings.length && options.validation === "strict") {
+    throw new Error(`Config validation failed:\n${warnings.join("\n")}`);
+  }
+  return { ...model, warnings };
 }
 
 function datasetDescriptionHtml(dataset) {
@@ -976,7 +1076,7 @@ function renderKaggle(model, dataset, activeTab = "data-card") {
             <button type="button" class="kg-score" aria-label="Mock upvote"><span>▲</span><strong>${escapeHtml(dataset.likes || "85")}</strong></button>
             <a class="kg-code-button" href="/kaggle/${dataset.slug}/code/">&lt;&gt; Code</a>
             <a class="kg-download" href="${escapeHtml(downloadHref)}"${download}>⇩ Download</a>
-            <button type="button" class="kg-medal" aria-label="${escapeHtml(dataset.kaggleMedals)} mock medal"></button>
+            <button type="button" class="kg-medal" title="Mock platform-computed medal: ${escapeHtml(dataset.kaggleMedals)}" aria-label="${escapeHtml(dataset.kaggleMedals)} mock medal"></button>
             <button type="button" data-kg-more aria-label="More actions">⋮</button>
           </div>
         </div>
@@ -992,7 +1092,7 @@ function renderKaggle(model, dataset, activeTab = "data-card") {
           <button type="button" class="kg-score" aria-label="Mock upvote"><span>▲</span><strong>${escapeHtml(dataset.likes || "85")}</strong></button>
           <button type="button" data-kg-code>&lt;&gt; Code</button>
           <a class="kg-download" href="${escapeHtml(downloadHref)}"${download}>⇩ Download</a>
-          <button type="button" class="kg-medal" aria-label="${escapeHtml(dataset.kaggleMedals)} mock medal"></button>
+          <button type="button" class="kg-medal" title="Mock platform-computed medal: ${escapeHtml(dataset.kaggleMedals)}" aria-label="${escapeHtml(dataset.kaggleMedals)} mock medal"></button>
           <button type="button" data-kg-more aria-label="More actions">⋮</button>
           <div class="kg-code-popover" data-kg-code-popover hidden>
             <strong>Copy API command</strong>
@@ -1160,7 +1260,7 @@ function renderKaggleTabContent(dataset, activeTab, { rowCount, fileRows, tags, 
       <button class="kg-view-more" type="button" data-kg-view-more>⌄ View more</button>
     </article>
     <aside class="kg-meta">
-      <section><h2>Usability</h2><strong>${escapeHtml(dataset.kaggleUsability)}</strong></section>
+      <section><h2>Usability</h2><strong>${escapeHtml(dataset.kaggleUsability)}</strong><p>Mock platform-computed value.</p></section>
       <section><h2>License</h2><a href="/manifest.json">${escapeHtml(dataset.license)}</a></section>
       <section><h2>Expected update frequency</h2><p>Never</p></section>
       <section><h2>Tags</h2><div class="kg-tags">${tags}</div></section>
@@ -1289,14 +1389,15 @@ async function copyCoverImage(outDir, dataset, options, files) {
 }
 
 export async function generateSite(config, options = {}) {
-  const model = normalizeConfig(config);
+  const model = normalizeConfig(config, options);
+  const { warnings, ...manifestModel } = model;
   const outDir = resolve(options.outDir || "dist");
   const files = [];
   await rm(outDir, { recursive: true, force: true });
   await mkdir(outDir, { recursive: true });
   await write(outDir, "index.html", renderHome(model), files);
   await write(outDir, "assets/styles.css", styles() + hfSpecificStyles() + kaggleSpecificStyles() + kaggleAlignmentStyles() + kaggleTabStyles() + kaggleExplorerStyles() + kaggleFidelityStyles() + kagglePrecisionStyles() + kaggleMeasuredFontCalibrationStyles() + homePageStyles(), files);
-  await write(outDir, "manifest.json", JSON.stringify({ ...model, mockNotice: MOCK_NOTICE }, null, 2), files);
+  await write(outDir, "manifest.json", JSON.stringify({ ...manifestModel, mockNotice: MOCK_NOTICE }, null, 2), files);
   for (const dataset of model.datasets) {
     await write(outDir, `hf/${dataset.slug}/index.html`, renderHf(model, dataset), files);
     await write(outDir, `hf/${dataset.slug}/data-studio/index.html`, renderHfDataStudio(model, dataset), files);
@@ -1311,5 +1412,5 @@ export async function generateSite(config, options = {}) {
     }
     await copyCoverImage(outDir, dataset, options, files);
   }
-  return { outDir, files };
+  return { outDir, files, warnings };
 }

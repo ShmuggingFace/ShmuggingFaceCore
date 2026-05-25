@@ -131,6 +131,13 @@ Use strict validation in CI when you want those warnings to fail the build:
 npx shmuggingface build --config shmuggingface.config.mjs --out dist --strict-config
 ```
 
+Run optional Hugging Face-facing validation when a downstream project wants a
+pre-publish check:
+
+```sh
+npx shmuggingface build --config shmuggingface.config.mjs --out dist --validate-hf
+```
+
 Use `meta` for downstream-only metadata that the generator should preserve as
 opaque config context in `manifest.json`. Use dataset-level `mockOnly` for
 values that intentionally simulate platform-computed state and should never be
@@ -155,6 +162,13 @@ Each dataset entry supports the following release-review fields:
   rendered in viewer split controls and metadata independently from the preview
   `rows` array. Multi-subset datasets may instead use nested counts such as
   `{ subsetName: { train: 1200, validation: 150 } }`.
+- `huggingFaceValidation`: optional object for Hugging Face-facing checks.
+  Set `enabled: true` on a dataset or pass `--validate-hf` to the CLI to check
+  local README/YAML front matter, local Parquet magic bytes, and split-name
+  safety. Add `loadDataset: true` to attempt a Python
+  `datasets.load_dataset()` round trip against `datasetDir` before publishing.
+  The round trip is explicit because it requires Python plus the Hugging Face
+  `datasets` package in the downstream environment.
 - `subsets`: optional Dataset Viewer subset labels. Defaults to the dataset
   slug.
 - `rowCount`: optional dataset-level row count. If omitted, the generator falls
@@ -278,6 +292,36 @@ validationGroups: [{
   files: [{ path: "validation/manifest.json", size: "6 KB", sourcePath: "validation/manifest.json" }],
 }]
 ```
+
+## Optional Hugging Face Validation
+
+ShmuggingFaceCore stays a lightweight static generator by default. It does not
+install Python, PyArrow, Hugging Face `datasets`, or a YAML parser. The opt-in
+validation path performs dependency-free checks first:
+
+- a local dataset-card `README.md` exists and has YAML front matter;
+- local `.parquet` files begin and end with Parquet `PAR1` magic bytes;
+- configured split names avoid spaces and slashes.
+
+To add a Hugging Face round trip in a downstream release job, install the Python
+dependencies there and opt in explicitly:
+
+```js
+huggingFaceValidation: {
+  enabled: true,
+  datasetDir: "release/huggingface",
+  loadDataset: true,
+}
+```
+
+```sh
+python -m pip install datasets pyarrow
+npx shmuggingface build --config shmuggingface.config.mjs --out dist --validate-hf --strict-config
+```
+
+Validation findings are returned in `result.warnings`, printed by the CLI, and
+written to `manifest.json` as `validationWarnings` so review artifacts retain
+the pre-publish check results.
 
 ## GitHub Actions
 

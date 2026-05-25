@@ -1,5 +1,9 @@
-import { copyFile, mkdir, rm, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { extname, join, resolve } from "node:path";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
 
 const MOCK_NOTICE =
   "This is a ShmuggingFace review mock. It is not Hugging Face, Kaggle, or a real dataset release.";
@@ -71,6 +75,7 @@ const DATASET_KEYS = new Set([
   "rows",
   "profileStats",
   "splitRowCounts",
+  "huggingFaceValidation",
   "discussions",
   "meta",
   "mockOnly",
@@ -91,6 +96,8 @@ const DATASET_MOCK_ONLY_KEYS = new Set(["kaggleUsability", "kaggleMedals"]);
 const PROFILE_STATS_KEYS = new Set(["rowCount", "columns", "files"]);
 const PROFILE_COLUMN_KEYS = new Set(["uniqueCount", "nullRate", "min", "max", "topValues"]);
 const PROFILE_TOP_VALUE_KEYS = new Set(["value", "count", "rate"]);
+const HUGGING_FACE_VALIDATION_KEYS = new Set(["enabled", "readmePath", "datasetDir", "loadDataset", "python", "configName"]);
+const HF_SPLIT_NAME_PATTERN = /^[A-Za-z0-9._-]+$/;
 
 function warnUnknownKeys(object, allowed, label, warnings) {
   if (!object || typeof object !== "object" || Array.isArray(object)) return;
@@ -325,6 +332,23 @@ function normalizeProfileStats(value, fallbackRows = [], label, warnings) {
   };
 }
 
+function normalizeHuggingFaceValidation(value, label, warnings) {
+  if (value === undefined) return {};
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    warnings.push(`${label} must be an object when provided`);
+    return {};
+  }
+  warnUnknownKeys(value, HUGGING_FACE_VALIDATION_KEYS, label, warnings);
+  return {
+    enabled: Boolean(value.enabled),
+    readmePath: value.readmePath ? String(value.readmePath) : "",
+    datasetDir: value.datasetDir ? String(value.datasetDir) : "",
+    loadDataset: Boolean(value.loadDataset),
+    python: value.python ? String(value.python) : "",
+    configName: value.configName ? String(value.configName) : "",
+  };
+}
+
 function normalizeConfig(config, options = {}) {
   const root = config ?? {};
   const warnings = [];
@@ -364,6 +388,7 @@ function normalizeConfig(config, options = {}) {
       const rows = Array.isArray(dataset.rows) ? dataset.rows : [];
       const profileStats = normalizeProfileStats(dataset.profileStats, rows, `datasets[${index}].profileStats`, warnings);
       const splitRowCounts = normalizeSplitRowCounts(dataset.splitRowCounts, `datasets[${index}].splitRowCounts`, warnings);
+      const huggingFaceValidation = normalizeHuggingFaceValidation(dataset.huggingFaceValidation, `datasets[${index}].huggingFaceValidation`, warnings);
       return {
         slug: slugify(dataset.slug || title),
         title,
@@ -394,6 +419,7 @@ function normalizeConfig(config, options = {}) {
         columns: dataset.columns || [],
         rows,
         profileStats,
+        huggingFaceValidation,
         discussions: dataset.discussions || [],
       };
     }),
@@ -402,6 +428,129 @@ function normalizeConfig(config, options = {}) {
     throw new Error(`Config validation failed:\n${warnings.join("\n")}`);
   }
   return { ...model, warnings };
+}
+
+function shouldValidateHuggingFace(dataset, options) {
+  return Boolean(options.huggingFaceValidation || dataset.huggingFaceValidation?.enabled);
+}
+
+function localFileForDatasetFile(datasetFile, options) {
+  if (!datasetFile?.sourcePath) return "";
+  return resolve(options.configDir || process.cwd(), datasetFile.sourcePath);
+}
+
+function findReadmeFile(dataset, options) {
+  const configured = dataset.huggingFaceValidation?.readmePath;
+  if (configured) {
+    return resolve(options.configDir || process.cwd(), configured);
+  }
+  const readme = datasetFiles(dataset).find((file) => /(^|\/)README\.md$/i.test(file.path) && file.sourcePath);
+  return readme ? localFileForDatasetFile(readme, options) : "";
+}
+
+async function validateReadmeYaml(dataset, options, warnings) {
+  const readmePath = findReadmeFile(dataset, options);
+  if (!readmePath) {
+    warnings.push(`datasets.${dataset.slug}.huggingFaceValidation could not find a local README.md source for dataset-card YAML validation`);
+    return;
+  }
+  let contents;
+  try {
+    contents = await readFile(readmePath, "utf8");
+  } catch (error) {
+    warnings.push(`datasets.${dataset.slug}.huggingFaceValidation could not read README at ${readmePath}: ${error.message}`);
+    return;
+  }
+  if (!contents.trim()) {
+    warnings.push(`datasets.${dataset.slug}.huggingFaceValidation README is empty`);
+    return;
+  }
+  if (!contents.startsWith("---\n")) {
+    warnings.push(`datasets.${dataset.slug}.huggingFaceValidation README has no Hugging Face YAML front matter`);
+    return;
+  }
+  const end = contents.indexOf("\n---", 4);
+  if (end === -1) {
+    warnings.push(`datasets.${dataset.slug}.huggingFaceValidation README YAML front matter is not closed`);
+    return;
+  }
+  const yaml = contents.slice(4, end).trim();
+  if (!yaml) {
+    warnings.push(`datasets.${dataset.slug}.huggingFaceValidation README YAML front matter is empty`);
+    return;
+  }
+  const hasKeyValue = yaml.split("\n").some((line) => /^[A-Za-z0-9_-]+:\s*.+/.test(line.trim()));
+  if (!hasKeyValue) {
+    warnings.push(`datasets.${dataset.slug}.huggingFaceValidation README YAML front matter has no simple key/value metadata`);
+  }
+}
+
+async function validateParquetFiles(dataset, options, warnings) {
+  const parquetFiles = datasetFiles(dataset).filter((file) => /\.parquet$/i.test(file.path));
+  for (const file of parquetFiles) {
+    if (!file.sourcePath) {
+      warnings.push(`datasets.${dataset.slug}.huggingFaceValidation cannot inspect ${file.path}; it uses downloadUrl or has no local sourcePath`);
+      continue;
+    }
+    const source = localFileForDatasetFile(file, options);
+    let bytes;
+    try {
+      bytes = await readFile(source);
+    } catch (error) {
+      warnings.push(`datasets.${dataset.slug}.huggingFaceValidation could not read Parquet file ${file.path}: ${error.message}`);
+      continue;
+    }
+    const startsWithMagic = bytes.subarray(0, 4).toString("utf8") === "PAR1";
+    const endsWithMagic = bytes.length >= 4 && bytes.subarray(bytes.length - 4).toString("utf8") === "PAR1";
+    if (!startsWithMagic || !endsWithMagic) {
+      warnings.push(`datasets.${dataset.slug}.huggingFaceValidation ${file.path} does not have Parquet PAR1 magic bytes`);
+    }
+  }
+}
+
+function validateSplitNames(dataset, warnings) {
+  for (const split of dataset.splits) {
+    if (!split || !HF_SPLIT_NAME_PATTERN.test(split)) {
+      warnings.push(`datasets.${dataset.slug}.huggingFaceValidation split "${split}" should use a Hugging Face-safe name without spaces or slashes`);
+    }
+  }
+}
+
+async function validateLoadDataset(dataset, options, warnings) {
+  if (!dataset.huggingFaceValidation?.loadDataset) return;
+  const python = dataset.huggingFaceValidation.python || "python3";
+  const datasetDir = resolve(options.configDir || process.cwd(), dataset.huggingFaceValidation.datasetDir || ".");
+  const args = [
+    "-c",
+    [
+      "from datasets import load_dataset",
+      "import sys",
+      "path = sys.argv[1]",
+      "name = sys.argv[2] or None",
+      "dataset = load_dataset(path, name=name) if name else load_dataset(path)",
+      "print(sorted(dataset.keys()))",
+    ].join("\n"),
+    datasetDir,
+    dataset.huggingFaceValidation.configName || "",
+  ];
+  try {
+    await execFileAsync(python, args, { timeout: 60000 });
+  } catch (error) {
+    const output = [error.stderr, error.stdout, error.message].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+    warnings.push(`datasets.${dataset.slug}.huggingFaceValidation datasets.load_dataset() failed for ${datasetDir}: ${output}`);
+  }
+}
+
+async function collectHuggingFaceValidationWarnings(model, options) {
+  const warnings = [];
+  for (const dataset of model.datasets) {
+    if (!shouldValidateHuggingFace(dataset, options)) continue;
+    validateSplitNames(dataset, warnings);
+    await validateReadmeYaml(dataset, options, warnings);
+    await validateParquetFiles(dataset, options, warnings);
+    await validateLoadDataset(dataset, options, warnings);
+  }
+  return warnings;
 }
 
 function datasetDescriptionHtml(dataset) {
@@ -1791,6 +1940,11 @@ async function copyCoverImage(outDir, dataset, options, files) {
 
 export async function generateSite(config, options = {}) {
   const model = normalizeConfig(config, options);
+  const hfWarnings = await collectHuggingFaceValidationWarnings(model, options);
+  model.warnings.push(...hfWarnings);
+  if (hfWarnings.length && options.validation === "strict") {
+    throw new Error(`Config validation failed:\n${model.warnings.join("\n")}`);
+  }
   const { warnings, ...manifestModel } = model;
   const outDir = resolve(options.outDir || "dist");
   const files = [];
@@ -1798,7 +1952,7 @@ export async function generateSite(config, options = {}) {
   await mkdir(outDir, { recursive: true });
   await write(outDir, "index.html", renderHome(model), files);
   await write(outDir, "assets/styles.css", styles() + hfSpecificStyles() + kaggleSpecificStyles() + kaggleAlignmentStyles() + kaggleTabStyles() + kaggleExplorerStyles() + kaggleFidelityStyles() + kagglePrecisionStyles() + kaggleMeasuredFontCalibrationStyles() + homePageStyles() + relationalArtifactStyles(), files);
-  await write(outDir, "manifest.json", JSON.stringify({ ...manifestModel, mockNotice: MOCK_NOTICE }, null, 2), files);
+  await write(outDir, "manifest.json", JSON.stringify({ ...manifestModel, mockNotice: MOCK_NOTICE, validationWarnings: warnings }, null, 2), files);
   for (const dataset of model.datasets) {
     await write(outDir, `hf/${dataset.slug}/index.html`, renderHf(model, dataset), files);
     await write(outDir, `hf/${dataset.slug}/data-studio/index.html`, renderHfDataStudio(model, dataset), files);

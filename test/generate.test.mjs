@@ -583,6 +583,52 @@ test("CLI prints config warnings and fails strict config validation", async () =
   );
 });
 
+test("generateSite runs optional Hugging Face validation hooks", async () => {
+  const outDir = await mkdtemp(join(tmpdir(), "shmuggingface-"));
+  const sourceDir = await mkdtemp(join(tmpdir(), "shmuggingface-source-"));
+  await writeFile(join(sourceDir, "README.md"), "---\nlicense: mit\ntask_categories:\n  - text-classification\n---\n# Dataset\n");
+  await writeFile(join(sourceDir, "train.parquet"), Buffer.from("PAR1mock-parquet-footerPAR1"));
+
+  const result = await generateSite({
+    datasets: [{
+      title: "HF Validated",
+      splits: ["train", "bad split"],
+      rows: [{ text: "hello" }],
+      files: [
+        { path: "README.md", size: "1 KB", kind: "Dataset card", sourcePath: "README.md" },
+        { path: "data/train.parquet", size: "1 KB", kind: "Parquet", sourcePath: "train.parquet" },
+      ],
+      huggingFaceValidation: { enabled: true },
+    }],
+  }, { outDir, configDir: sourceDir });
+
+  assert.match(result.warnings.join("\n"), /split "bad split" should use a Hugging Face-safe name/);
+  assert.doesNotMatch(result.warnings.join("\n"), /README has no Hugging Face YAML front matter/);
+  assert.doesNotMatch(result.warnings.join("\n"), /does not have Parquet PAR1 magic bytes/);
+  const manifest = JSON.parse(await readFile(join(outDir, "manifest.json"), "utf8"));
+  assert.match(manifest.validationWarnings.join("\n"), /bad split/);
+});
+
+test("CLI --validate-hf surfaces Hugging Face validation warnings", async () => {
+  const sourceDir = await mkdtemp(join(tmpdir(), "shmuggingface-cli-hf-"));
+  const outDir = join(sourceDir, "dist");
+  const configPath = join(sourceDir, "shmuggingface.config.mjs");
+  await writeFile(configPath, `export default {
+    datasets: [{
+      title: "CLI HF Validation",
+      splits: ["train set"],
+      rows: [{ id: "1" }],
+      files: [{ path: "data/full.csv", size: "1 KB", downloadUrl: "https://example.com/full.csv" }]
+    }]
+  };`);
+
+  const result = await execFileAsync(process.execPath, [cliPath, "build", "--config", configPath, "--out", outDir, "--validate-hf"]);
+  assert.match(result.stdout, /Generated \d+ files/);
+  assert.match(result.stderr, /Config warnings:/);
+  assert.match(result.stderr, /split "train set" should use a Hugging Face-safe name/);
+  assert.match(result.stderr, /could not find a local README\.md source/);
+});
+
 test("generateSite leaves external large-file links out of downloads", async () => {
   const outDir = await mkdtemp(join(tmpdir(), "shmuggingface-"));
   const result = await generateSite({

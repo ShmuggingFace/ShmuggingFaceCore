@@ -183,6 +183,157 @@ test("generateSite renders release review config fields", async () => {
   assert.match(kaggleHtml, /Custom about text/);
 });
 
+test("generateSite prefers full-file profileStats in the Shmaggle explorer", async () => {
+  const outDir = await mkdtemp(join(tmpdir(), "shmuggingface-"));
+  await generateSite({
+    datasets: [{
+      title: "Full Profile Dataset",
+      rowCount: 10000,
+      columns: ["is_active", "score"],
+      rows: [{ is_active: "yes", score: "0.7" }],
+      profileStats: {
+        files: {
+          "data/full.csv": {
+            rowCount: 10000,
+            columns: {
+              is_active: {
+                uniqueCount: 2,
+                nullRate: 0,
+                topValues: [
+                  { value: "yes", count: 6100 },
+                  { value: "no", count: 3900 },
+                ],
+              },
+              score: {
+                uniqueCount: 7821,
+                nullRate: 0.015,
+                min: 0,
+                max: 1,
+                topValues: [{ value: "0.7", count: 180 }],
+              },
+            },
+          },
+        },
+      },
+      files: [{ path: "data/full.csv", size: "2 MB", downloadUrl: "https://example.com/full.csv" }],
+    }],
+  }, { outDir });
+
+  const kaggleHtml = await readFile(join(outDir, "kaggle/full-profile-dataset/index.html"), "utf8");
+  assert.match(kaggleHtml, /Full-file profile stats \(10,000 rows\)/);
+  assert.doesNotMatch(kaggleHtml, /Preview-sample stats/);
+  assert.match(kaggleHtml, /2 unique/);
+  assert.match(kaggleHtml, /yes<\/dt><dd>61%<\/dd>/);
+  assert.match(kaggleHtml, /no<\/dt><dd>39%<\/dd>/);
+  assert.match(kaggleHtml, /7,821 unique/);
+  assert.match(kaggleHtml, /1\.5% null/);
+  assert.match(kaggleHtml, /0 - 1/);
+});
+
+test("generateSite labels dataset-level profileStats honestly", async () => {
+  const outDir = await mkdtemp(join(tmpdir(), "shmuggingface-"));
+  await generateSite({
+    datasets: [{
+      title: "Dataset Profile Dataset",
+      columns: ["label"],
+      rows: [{ label: "demo" }],
+      profileStats: {
+        rowCount: 50,
+        columns: {
+          label: {
+            uniqueCount: 3,
+            topValues: [{ value: "demo", count: 25 }],
+          },
+        },
+      },
+      files: [
+        { path: "data/train.csv", size: "1 KB", downloadUrl: "https://example.com/train.csv" },
+        { path: "data/test.csv", size: "1 KB", downloadUrl: "https://example.com/test.csv" },
+      ],
+    }],
+  }, { outDir });
+
+  const kaggleHtml = await readFile(join(outDir, "kaggle/dataset-profile-dataset/index.html"), "utf8");
+  assert.match(kaggleHtml, /Dataset-level profile stats \(50 rows\)/);
+  assert.doesNotMatch(kaggleHtml, /Full-file profile stats/);
+});
+
+test("generateSite labels row-derived explorer stats as preview-sample stats", async () => {
+  const outDir = await mkdtemp(join(tmpdir(), "shmuggingface-"));
+  await generateSite({
+    datasets: [{
+      title: "Sample Profile Dataset",
+      rowCount: 10000,
+      rows: [
+        { is_active: "yes" },
+        { is_active: "yes" },
+      ],
+      files: [{ path: "data/preview.csv", size: "1 KB", downloadUrl: "https://example.com/preview.csv" }],
+    }],
+  }, { outDir });
+
+  const kaggleHtml = await readFile(join(outDir, "kaggle/sample-profile-dataset/index.html"), "utf8");
+  assert.match(kaggleHtml, /10,000 rows/);
+  assert.match(kaggleHtml, /Preview-sample stats \(2 rows\)/);
+  assert.doesNotMatch(kaggleHtml, /Full-file profile stats/);
+  assert.match(kaggleHtml, /1 unique/);
+  assert.doesNotMatch(kaggleHtml, /9,?000 unique/);
+});
+
+test("generateSite falls back to sample stats when profileStats is empty or malformed", async () => {
+  const outDir = await mkdtemp(join(tmpdir(), "shmuggingface-"));
+  const result = await generateSite({
+    datasets: [{
+      title: "Malformed Profile Dataset",
+      rowCount: 100,
+      columns: ["status"],
+      rows: [{ status: "active" }],
+      profileStats: {
+        columns: {
+          status: {
+            unique_count: 2,
+          },
+        },
+      },
+      files: [{ path: "data/preview.csv", size: "1 KB", downloadUrl: "https://example.com/preview.csv" }],
+    }],
+  }, { outDir });
+
+  assert.match(result.warnings.join("\n"), /datasets\[0\]\.profileStats\.columns\.status\.unique_count is not a recognized config field/);
+  assert.match(result.warnings.join("\n"), /datasets\[0\]\.profileStats\.columns must include at least one usable column profile/);
+  const kaggleHtml = await readFile(join(outDir, "kaggle/malformed-profile-dataset/index.html"), "utf8");
+  assert.match(kaggleHtml, /Preview-sample stats \(1 rows\)/);
+  assert.doesNotMatch(kaggleHtml, /Full-file profile stats/);
+});
+
+test("generateSite fails strict validation for invalid profileStats", async () => {
+  const outDir = await mkdtemp(join(tmpdir(), "shmuggingface-"));
+  await assert.rejects(
+    generateSite({
+      datasets: [{
+        title: "Strict Profile Dataset",
+        columns: ["status"],
+        rows: [{ status: "active" }],
+        profileStats: {
+          files: {
+            "data/full.csv": {
+              rowCount: "many",
+              columns: {
+                status: {
+                  unique_count: 2,
+                  topValues: "active",
+                },
+              },
+            },
+          },
+        },
+        files: [{ path: "data/full.csv", size: "1 KB", downloadUrl: "https://example.com/full.csv" }],
+      }],
+    }, { outDir, validation: "strict" }),
+    /Config validation failed:[\s\S]*profileStats\.files\.data\/full\.csv\.rowCount must be a finite number/,
+  );
+});
+
 test("generateSite reports config-contract warnings and supports strict validation", async () => {
   const outDir = await mkdtemp(join(tmpdir(), "shmuggingface-"));
   const result = await generateSite({

@@ -72,7 +72,7 @@ For repeatable downstream builds, pin the GitHub release tag:
 ```json
 {
   "dependencies": {
-    "@shmuggingface/core": "github:ShmuggingFace/ShmuggingFaceCore#v1.0.0"
+    "@shmuggingface/core": "github:ShmuggingFace/ShmuggingFaceCore#v1.0.1"
   }
 }
 ```
@@ -179,3 +179,8 @@ jobs:
 ShmuggingFaceCore is for review mocks, not impersonation. Generated sites should
 be accurate enough for release review but must keep the mock brand, mock notice,
 and non-production URLs visible.
+
+## Planning
+
+- [Review synthesis](docs/shmuggingface_review_synthesis.md)
+- [Next 10 review PRs](docs/next_10_review_prs.md)

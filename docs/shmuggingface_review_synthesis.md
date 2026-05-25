@@ -6,6 +6,8 @@ thinking, Gemini standard and extended thinking, all dated 2026-05-25.
 Goal: keep only upstream ShmuggingFaceCore framework findings. Downstream
 LeadForge integration issues were extracted to
 `/Users/shaypalachy/agents/handoffs/leadforge-v1-review/leadforge_shmuggingface_integration_issues.md`.
+The immediate implementation sequence is tracked in
+[`docs/next_10_review_prs.md`](next_10_review_prs.md).
 
 ---
 
@@ -147,3 +149,7 @@ Highest-impact Core follow-ups:
 5. Add optional HF round-trip validation against real dataset artifacts.
 6. Remove, deprecate, or clearly mark mock-only platform-computed fields such as
    `kaggleUsability` and `kaggleMedals`.
+
+See [`docs/next_10_review_prs.md`](next_10_review_prs.md) for the ordered PR
+queue that maps this synthesis and the LeadForge downstream handoff into the
+next ten implementation slices.

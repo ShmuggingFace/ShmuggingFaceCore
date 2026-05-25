@@ -151,6 +151,10 @@ Each dataset entry supports the following release-review fields:
   a Kaggle-style data-card banner.
 - `splits`: optional Dataset Viewer split labels. Defaults to
   `["train", "validation", "test"]`.
+- `splitRowCounts`: optional object keyed by split name. These counts are
+  rendered in viewer split controls and metadata independently from the preview
+  `rows` array. Multi-subset datasets may instead use nested counts such as
+  `{ subsetName: { train: 1200, validation: 150 } }`.
 - `subsets`: optional Dataset Viewer subset labels. Defaults to the dataset
   slug.
 - `rowCount`: optional dataset-level row count. If omitted, the generator falls
@@ -170,6 +174,22 @@ Each dataset entry supports the following release-review fields:
 - `files[].about`: optional Kaggle Data Explorer "About this file" copy. If it
   is omitted, the mock uses a generic preview description based on the file
   name.
+- `files[].schema`: optional per-file schema metadata preserved in
+  `manifest.json`. Downstream configs can use this for primary keys,
+  foreign-key notes, or generated schema objects.
+- `files[].columnDtypes`: optional object keyed by column name. File surfaces
+  use it to show how many schema columns are described without requiring
+  preview rows to carry the whole schema.
+- `files[].rowCount` and `files[].splitRowCounts`: optional per-file counts for
+  relational tables or other artifacts.
+- `tableGroups`, `docsGroups`, `notebookGroups`, and `validationGroups`:
+  optional arrays of artifact groups. Each group accepts `title`,
+  `description`, `meta`, and `files`. Group files use the same file fields as
+  the legacy flat `files` array and are rendered in grouped HF and Shmaggle file
+  surfaces.
+- `artifactGroups`: optional grouped form equivalent to the group-specific
+  fields above, with keys such as `tables`, `docs`, `notebooks`, `validation`,
+  or `manifests`. Unknown keys warn, and fail when `--strict-config` is used.
 - `meta`: optional opaque downstream metadata. The generator preserves this in
   `manifest.json` and does not interpret fields inside this object. `meta` is
   also accepted on `site` and `files[]`.
@@ -225,6 +245,38 @@ files: [
     downloadLabel: "Open Git LFS",
   },
 ]
+```
+
+Relational releases can keep the flat `files` array for backwards-compatible
+consumers while adding grouped artifacts for the richer file surfaces:
+
+```js
+splitRowCounts: {
+  public: { train: 8750, validation: 1200, test: 1050 },
+  internal: { train: 350, validation: 40, test: 30 },
+},
+files: [{ path: "data/preview.csv", size: "24 KB", sourcePath: "data/preview.csv" }],
+tableGroups: [{
+  title: "Core relational tables",
+  description: "Normalized tables included in the release bundle.",
+  files: [{
+    path: "tables/customers.parquet",
+    size: "18 MB",
+    kind: "Parquet",
+    downloadUrl: "https://example.com/tables/customers.parquet",
+    rowCount: 8750,
+    columnDtypes: { customer_id: "int64", segment: "string" },
+    schema: { primaryKey: ["customer_id"] },
+  }],
+}],
+docsGroups: [{
+  title: "Documentation",
+  files: [{ path: "docs/data_dictionary.md", size: "12 KB", sourcePath: "docs/data_dictionary.md" }],
+}],
+validationGroups: [{
+  title: "Validation and manifests",
+  files: [{ path: "validation/manifest.json", size: "6 KB", sourcePath: "validation/manifest.json" }],
+}]
 ```
 
 ## GitHub Actions

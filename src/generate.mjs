@@ -62,9 +62,15 @@ const DATASET_KEYS = new Set([
   "splits",
   "subsets",
   "files",
+  "artifactGroups",
+  "tableGroups",
+  "docsGroups",
+  "notebookGroups",
+  "validationGroups",
   "columns",
   "rows",
   "profileStats",
+  "splitRowCounts",
   "discussions",
   "meta",
   "mockOnly",
@@ -72,7 +78,15 @@ const DATASET_KEYS = new Set([
   "kaggleUsability",
   "kaggleMedals",
 ]);
-const FILE_KEYS = new Set(["path", "size", "kind", "sourcePath", "about", "downloadUrl", "storage", "downloadLabel", "meta"]);
+const FILE_KEYS = new Set(["path", "size", "kind", "sourcePath", "about", "downloadUrl", "storage", "downloadLabel", "schema", "columnDtypes", "rowCount", "splitRowCounts", "meta"]);
+const ARTIFACT_GROUP_KEYS = new Set(["title", "description", "files", "meta"]);
+const ARTIFACT_GROUPS_KEYS = new Set(["tables", "docs", "notebooks", "validation", "manifests"]);
+const ARTIFACT_GROUP_SETS = [
+  ["tableGroups", "tables", "Tables"],
+  ["docsGroups", "docs", "Documentation"],
+  ["notebookGroups", "notebooks", "Notebooks"],
+  ["validationGroups", "validation", "Validation and manifests"],
+];
 const DATASET_MOCK_ONLY_KEYS = new Set(["kaggleUsability", "kaggleMedals"]);
 const PROFILE_STATS_KEYS = new Set(["rowCount", "columns", "files"]);
 const PROFILE_COLUMN_KEYS = new Set(["uniqueCount", "nullRate", "min", "max", "topValues"]);
@@ -96,14 +110,100 @@ function optionalObject(value, label, warnings) {
   return value;
 }
 
+function normalizeSplitRowCounts(value, label, warnings) {
+  if (value === undefined) return {};
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    warnings.push(`${label} must be an object keyed by split name`);
+    return {};
+  }
+  return Object.fromEntries(Object.entries(value).flatMap(([split, count]) => {
+    if (count && typeof count === "object" && !Array.isArray(count)) {
+      return [[split, normalizeSplitRowCounts(count, `${label}.${split}`, warnings)]];
+    }
+    const normalized = optionalNumber(count, `${label}.${split}`, warnings);
+    return normalized === undefined ? [] : [[split, normalized]];
+  }));
+}
+
+function normalizeColumnDtypes(value, label, warnings) {
+  if (value === undefined) return {};
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    warnings.push(`${label} must be an object keyed by column name`);
+    return {};
+  }
+  return Object.fromEntries(Object.entries(value).map(([column, dtype]) => [column, String(dtype)]));
+}
+
+function normalizeFile(file, label, warnings) {
+  warnUnknownKeys(file, FILE_KEYS, label, warnings);
+  const schema = optionalObject(file.schema, `${label}.schema`, warnings);
+  return {
+    ...file,
+    rowCount: optionalNumber(file.rowCount, `${label}.rowCount`, warnings),
+    splitRowCounts: normalizeSplitRowCounts(file.splitRowCounts, `${label}.splitRowCounts`, warnings),
+    columnDtypes: normalizeColumnDtypes(file.columnDtypes, `${label}.columnDtypes`, warnings),
+    schema: Object.keys(schema).length ? schema : undefined,
+    meta: optionalObject(file.meta, `${label}.meta`, warnings),
+  };
+}
+
 function normalizeFiles(files, warnings, datasetIndex) {
   return files.map((file, fileIndex) => {
-    warnUnknownKeys(file, FILE_KEYS, `datasets[${datasetIndex}].files[${fileIndex}]`, warnings);
+    const label = `datasets[${datasetIndex}].files[${fileIndex}]`;
     return {
-      ...file,
-      meta: optionalObject(file.meta, `datasets[${datasetIndex}].files[${fileIndex}].meta`, warnings),
+      ...normalizeFile(file, label, warnings),
+      groupType: "files",
+      groupTitle: "Files",
     };
   });
+}
+
+function normalizeArtifactGroupList(groups, label, type, fallbackTitle, warnings) {
+  if (groups === undefined) return [];
+  if (!Array.isArray(groups)) {
+    warnings.push(`${label} must be an array when provided`);
+    return [];
+  }
+  return groups.map((group, groupIndex) => {
+    const groupLabel = `${label}[${groupIndex}]`;
+    if (!group || typeof group !== "object" || Array.isArray(group)) {
+      warnings.push(`${groupLabel} must be an object`);
+      return { type, title: fallbackTitle, description: "", files: [], meta: {} };
+    }
+    warnUnknownKeys(group, ARTIFACT_GROUP_KEYS, groupLabel, warnings);
+    const files = Array.isArray(group.files) ? group.files : [];
+    if (!Array.isArray(group.files)) {
+      warnings.push(`${groupLabel}.files must be an array`);
+    }
+    const title = String(group.title || fallbackTitle);
+    return {
+      type,
+      title,
+      description: group.description || "",
+      meta: optionalObject(group.meta, `${groupLabel}.meta`, warnings),
+      files: files.map((file, fileIndex) => ({
+        ...normalizeFile(file, `${groupLabel}.files[${fileIndex}]`, warnings),
+        groupType: type,
+        groupTitle: title,
+      })),
+    };
+  });
+}
+
+function normalizeArtifactGroups(dataset, warnings, datasetIndex) {
+  const groups = [];
+  for (const [field, type, title] of ARTIFACT_GROUP_SETS) {
+    groups.push(...normalizeArtifactGroupList(dataset[field], `datasets[${datasetIndex}].${field}`, type, title, warnings));
+  }
+  const grouped = optionalObject(dataset.artifactGroups, `datasets[${datasetIndex}].artifactGroups`, warnings);
+  warnUnknownKeys(grouped, ARTIFACT_GROUPS_KEYS, `datasets[${datasetIndex}].artifactGroups`, warnings);
+  for (const [field, type, title] of ARTIFACT_GROUP_SETS) {
+    groups.push(...normalizeArtifactGroupList(grouped[type], `datasets[${datasetIndex}].artifactGroups.${type}`, type, title, warnings));
+    if (type === "validation") {
+      groups.push(...normalizeArtifactGroupList(grouped.manifests, `datasets[${datasetIndex}].artifactGroups.manifests`, type, title, warnings));
+    }
+  }
+  return groups.filter((group) => group.files.length);
 }
 
 function normalizeDatasetMockOnly(value, label, warnings) {
@@ -258,10 +358,12 @@ function normalizeConfig(config, options = {}) {
       }
       const files = Array.isArray(dataset.files) ? dataset.files : [];
       const normalizedFiles = normalizeFiles(files, warnings, index);
+      const artifactGroups = normalizeArtifactGroups(dataset, warnings, index);
       const datasetMeta = optionalObject(dataset.meta, `datasets[${index}].meta`, warnings);
       const mockOnly = normalizeDatasetMockOnly(dataset.mockOnly, `datasets[${index}].mockOnly`, warnings);
       const rows = Array.isArray(dataset.rows) ? dataset.rows : [];
       const profileStats = normalizeProfileStats(dataset.profileStats, rows, `datasets[${index}].profileStats`, warnings);
+      const splitRowCounts = normalizeSplitRowCounts(dataset.splitRowCounts, `datasets[${index}].splitRowCounts`, warnings);
       return {
         slug: slugify(dataset.slug || title),
         title,
@@ -286,7 +388,9 @@ function normalizeConfig(config, options = {}) {
         coverImage: dataset.coverImage || "",
         splits: stringArray(dataset.splits, ["train", "validation", "test"]),
         subsets: stringArray(dataset.subsets, [slugify(dataset.slug || title)]),
+        splitRowCounts,
         files: normalizedFiles,
+        artifactGroups,
         columns: dataset.columns || [],
         rows,
         profileStats,
@@ -530,7 +634,8 @@ function resolveExplorerProfile(dataset, file, rows, columns) {
 }
 
 function kaggleDataExplorer(dataset, rowCount) {
-  const file = dataset.files.find((item) => item.path.endsWith(".csv")) || dataset.files[0] || { path: `${dataset.slug}.csv`, size: "" };
+  const filesForDataset = datasetFiles(dataset);
+  const file = filesForDataset.find((item) => item.path.endsWith(".csv")) || filesForDataset[0] || { path: `${dataset.slug}.csv`, size: "" };
   const fileName = file.path.split("/").pop() || file.path;
   const fileAbout = file.about || `Preview file for ${fileName}`;
   const columns = dataset.columns.length ? dataset.columns : [...new Set(dataset.rows.flatMap((row) => Object.keys(row || {})))];
@@ -630,18 +735,81 @@ function kaggleDataExplorer(dataset, rowCount) {
 }
 
 function files(dataset) {
-  return dataset.files
-    .map((file) => {
+  const renderFile = (file) => {
       const href = fileHref(dataset, file);
       const label = file.downloadLabel || (file.downloadUrl ? `Open ${file.storage || "storage"}` : "Download");
       const download = file.downloadUrl ? "" : " download";
-      return `<li><span>${escapeHtml(file.path)}</span><strong>${escapeHtml(file.size || "")}</strong><em>${escapeHtml(file.kind || "file")}</em><a href="${escapeHtml(href)}"${download}>${escapeHtml(label)}</a></li>`;
-    })
+      const schema = fileSchemaSummary(file);
+      return `<li><span>${escapeHtml(file.path)}</span><strong>${escapeHtml(file.size || "")}</strong><em>${escapeHtml([file.kind || "file", schema].filter(Boolean).join(" · "))}</em><a href="${escapeHtml(href)}"${download}>${escapeHtml(label)}</a></li>`;
+  };
+  const groups = datasetFileGroups(dataset);
+  if (groups.length === 1 && groups[0].type === "files" && !dataset.artifactGroups?.length) {
+    return groups[0].files.map(renderFile).join("");
+  }
+  return groups
+    .map((group) => `<li class="hf-file-group"><b>${escapeHtml(group.title)}</b><ul>${group.files.map(renderFile).join("")}</ul></li>`)
     .join("");
 }
 
 function fileHref(dataset, file) {
   return file.downloadUrl || `/downloads/${dataset.slug}/${file.path.split("/").map(encodeURIComponent).join("/")}`;
+}
+
+function datasetFileGroups(dataset) {
+  const groups = [];
+  if (dataset.files.length) {
+    groups.push({
+      type: "files",
+      title: dataset.artifactGroups?.length ? "Preview files" : "Files",
+      description: dataset.artifactGroups?.length ? "Flat compatibility files" : "",
+      files: dataset.files,
+    });
+  }
+  groups.push(...(dataset.artifactGroups || []));
+  return groups;
+}
+
+function datasetFiles(dataset) {
+  return datasetFileGroups(dataset).flatMap((group) => group.files);
+}
+
+function primaryDatasetFile(dataset) {
+  const filesForDataset = datasetFiles(dataset);
+  return dataset.files.find((file) => !file.downloadUrl)
+    || dataset.files[0]
+    || filesForDataset.find((file) => !file.downloadUrl)
+    || filesForDataset[0];
+}
+
+function splitCountValue(dataset, split, subset) {
+  const subsetCounts = subset ? dataset.splitRowCounts?.[subset] : undefined;
+  if (subsetCounts && typeof subsetCounts === "object" && !Array.isArray(subsetCounts)) {
+    return subsetCounts[split];
+  }
+  return dataset.splitRowCounts?.[split];
+}
+
+function rowCountForSplit(dataset, split, fallbackRowCount, subset = "") {
+  return splitCountValue(dataset, split, subset) ?? fallbackRowCount;
+}
+
+function splitSummary(dataset, fallbackRowCount) {
+  const hasNestedCounts = Object.values(dataset.splitRowCounts || {}).some((value) => value && typeof value === "object" && !Array.isArray(value));
+  if (hasNestedCounts) {
+    return dataset.subsets
+      .flatMap((subset) => dataset.splits.map((split) => `${subset}/${split}: ${formatNumber(rowCountForSplit(dataset, split, fallbackRowCount, subset))}`))
+      .join(", ");
+  }
+  return dataset.splits
+    .map((split) => `${split}: ${formatNumber(rowCountForSplit(dataset, split, fallbackRowCount))}`)
+    .join(", ");
+}
+
+function fileSchemaSummary(file) {
+  const dtypeCount = Object.keys(file.columnDtypes || {}).length;
+  const schemaColumns = Array.isArray(file.schema?.columns) ? file.schema.columns.length : 0;
+  const count = Math.max(dtypeCount, schemaColumns);
+  return count ? `${formatNumber(count)} schema columns` : "";
 }
 
 function renderHfRepoHero(dataset) {
@@ -650,7 +818,7 @@ function renderHfRepoHero(dataset) {
   const metadata = [
     ["Tasks:", dataset.task],
     ["Modalities:", modality],
-    ["Formats:", dataset.files[0]?.kind || "CSV"],
+    ["Formats:", datasetFiles(dataset)[0]?.kind || "CSV"],
     ["Sub-tasks:", dataset.task.replaceAll("-", " ")],
     ["Languages:", dataset.language],
     ["Size:", rowCount < 1000 ? "< 1K" : "1K - 10K"],
@@ -787,6 +955,7 @@ function viewerShell(dataset, { studio = false } = {}) {
   const splits = dataset.splits.length ? dataset.splits : ["train", "validation", "test"];
   const activeSubset = subsets[0] || dataset.slug;
   const activeSplit = splits[0] || "train";
+  const activeSplitRows = rowCountForSplit(dataset, activeSplit, rowCount, activeSubset);
   return `<section class="dataset-viewer ${studio ? "studio-dataset-viewer" : ""}" id="data-studio" data-viewer="${escapeHtml(dataset.slug)}">
     <header>
       <h2>▦ Dataset Viewer</h2>
@@ -794,11 +963,11 @@ function viewerShell(dataset, { studio = false } = {}) {
     </header>
     <div class="viewer-splits">
       <button type="button" data-menu-button="subset" aria-expanded="false"><span>Subset (${escapeHtml(String(subsets.length))})</span><strong>${escapeHtml(activeSubset)} · ${formatNumber(rowCount)} rows</strong><em>⌄</em></button>
-      <button type="button" data-menu-button="split" aria-expanded="false"><span>Split (${escapeHtml(String(splits.length))})</span><strong>${escapeHtml(activeSplit)} · ${formatNumber(rowCount)} rows</strong><em>⌄</em></button>
+      <button type="button" data-menu-button="split" aria-expanded="false"><span>Split (${escapeHtml(String(splits.length))})</span><strong>${escapeHtml(activeSplit)} · ${formatNumber(activeSplitRows)} rows</strong><em>⌄</em></button>
     </div>
     <div class="viewer-menu-row">
       <div class="viewer-menu" data-menu="subset" hidden>${subsets.map((subset) => `<button type="button">${escapeHtml(subset)}</button>`).join("")}</div>
-      <div class="viewer-menu" data-menu="split" hidden>${splits.map((split) => `<button type="button">${escapeHtml(split)}</button>`).join("")}</div>
+      <div class="viewer-menu" data-menu="split" hidden>${splits.map((split) => `<button type="button">${escapeHtml(split)} · ${formatNumber(rowCountForSplit(dataset, split, rowCount, activeSubset))} rows</button>`).join("")}</div>
     </div>
     <label class="viewer-search"><span>⌕</span><input data-viewer-search placeholder="Search this dataset"></label>
     ${studio ? "" : `<div class="viewer-panels">
@@ -832,16 +1001,20 @@ function renderHfCompactHeader(dataset, active = "studio") {
 }
 
 function renderFileBrowser(dataset) {
-  const totalSize = dataset.files.map((file) => file.size).filter(Boolean).join(" + ") || "n/a";
-  const folders = [...new Set(dataset.files.map((file) => file.path.split("/")[0]).filter((part, _, parts) => part && dataset.files.some((file) => file.path.startsWith(`${part}/`))))];
+  const filesForDataset = datasetFiles(dataset);
+  const totalSize = filesForDataset.map((file) => file.size).filter(Boolean).join(" + ") || "n/a";
+  const groupsForDataset = datasetFileGroups(dataset);
+  const folders = dataset.artifactGroups?.length ? [] : [...new Set(filesForDataset.map((file) => file.path.split("/")[0]).filter((part, _, parts) => part && filesForDataset.some((file) => file.path.startsWith(`${part}/`))))];
   const folderRows = folders.map((folder) => {
-    const count = dataset.files.filter((file) => file.path.startsWith(`${folder}/`)).length;
+    const count = filesForDataset.filter((file) => file.path.startsWith(`${folder}/`)).length;
     return `<div class="repo-file-row folder-row"><span class="file-name">📁 ${escapeHtml(folder)}</span><span class="file-message">Prepare ${escapeHtml(folder)} release files</span><span class="file-age">review mock</span><span></span></div>`;
   }).join("");
-  const fileRows = dataset.files.map((file, index) => {
+  const renderFileRow = (file, index) => {
     const href = fileHref(dataset, file);
     const external = file.downloadUrl ? ` data-storage="${escapeHtml(file.storage || "external")}"` : " download";
-    const message = index === 0 ? "Convert dataset to Parquet (#8)" : file.downloadUrl ? `Point large artifact at ${file.storage || "external storage"}` : "Update files from the dataset builder";
+    const schema = fileSchemaSummary(file);
+    const rowCount = file.rowCount !== undefined ? `${formatNumber(file.rowCount)} rows` : "";
+    const message = [schema || (index === 0 ? "Convert dataset to Parquet (#8)" : file.downloadUrl ? `Point large artifact at ${file.storage || "external storage"}` : "Update files from the dataset builder"), rowCount].filter(Boolean).join(" · ");
     const safe = file.downloadUrl ? `<span class="safe-pill">${escapeHtml(file.storage || "external")}</span>` : '<span class="safe-pill">Safe</span>';
     return `<div class="repo-file-row">
       <span class="file-name">📄 ${escapeHtml(file.path)} ${safe}</span>
@@ -850,14 +1023,17 @@ function renderFileBrowser(dataset) {
       <span class="file-message">${escapeHtml(message)}</span>
       <span class="file-age">${escapeHtml(index === 0 ? "today" : dataset.updated)}</span>
     </div>`;
-  }).join("");
+  };
+  const groupedFileRows = dataset.artifactGroups?.length
+    ? groupsForDataset.map((group) => `<div class="repo-file-group"><div class="repo-file-group-heading"><strong>${escapeHtml(group.title)}</strong><span>${escapeHtml(group.description || `${group.files.length} files`)}</span></div>${group.files.map(renderFileRow).join("")}</div>`).join("")
+    : filesForDataset.map(renderFileRow).join("");
   return `<section class="hf-files-page" data-files-page="${escapeHtml(dataset.slug)}">
     <div class="file-browser-toolbar">
       <button type="button" data-files-menu-button="branch">⑂ main⌄</button>
       <strong class="file-repo-name">${escapeHtml(dataset.slug)}</strong>
       <span class="repo-size">${escapeHtml(totalSize)}</span>
       <div class="contributors"><span>🧑🏽‍💻</span><span>🧑🏻‍🔬</span><span>🧑🏾‍💼</span><strong>${Math.max(3, dataset.discussions.length + 2)} contributors</strong></div>
-      <button type="button" data-files-menu-button="history">◷ History: ${Math.max(8, dataset.files.length * 4)} commits</button>
+      <button type="button" data-files-menu-button="history">◷ History: ${Math.max(8, filesForDataset.length * 4)} commits</button>
       <button type="button" data-files-menu-button="contribute">＋ Contribute⌄</button>
     </div>
     <div class="files-menu-row">
@@ -868,7 +1044,7 @@ function renderFileBrowser(dataset) {
     <div class="file-browser">
       <div class="commit-banner"><span>😏</span><strong>${escapeHtml(dataset.contactName)}</strong><em>HF Staff</em><code>Convert dataset to Parquet (#8)</code><kbd>b08601e</kbd><time>over 2 years ago</time></div>
       ${folderRows}
-      ${fileRows}
+      ${groupedFileRows}
     </div>
   </section>`;
 }
@@ -933,7 +1109,8 @@ function dataStudioScript(dataset) {
 
 function datasetCodeExamples(dataset) {
   const repo = `${dataset.owner}/${dataset.slug}`;
-  const firstFile = dataset.files.find((file) => !file.downloadUrl) || dataset.files[0] || { path: "data/train.csv" };
+  const filesForDataset = datasetFiles(dataset);
+  const firstFile = filesForDataset.find((file) => !file.downloadUrl) || filesForDataset[0] || { path: "data/train.csv" };
   const filePath = firstFile.path || "data/train.csv";
   const rawUrl = `https://huggingface.co/datasets/${repo}/resolve/main/${filePath}`;
   return [
@@ -1101,6 +1278,7 @@ function communityScript(dataset) {
 
 function renderHf(model, dataset) {
   const rowCount = Math.max(dataset.rowCount, dataset.rows.length, 1);
+  const filesForDataset = datasetFiles(dataset);
   const contact = dataset.contactEmail
     ? `<a href="mailto:${escapeHtml(dataset.contactEmail)}">${escapeHtml(dataset.contactName)}</a>`
     : escapeHtml(dataset.contactName);
@@ -1142,9 +1320,9 @@ function renderHf(model, dataset) {
         <div><dt>Homepage:</dt><dd>shmuggingface.local</dd></div>
         <div><dt>Paper:</dt><dd>Mock release review</dd></div>
         <div><dt>Point of Contact:</dt><dd>${contact}</dd></div>
-        <div><dt>Size of downloaded dataset files:</dt><dd>${escapeHtml(dataset.files[0]?.size || "n/a")}</dd></div>
+        <div><dt>Size of downloaded dataset files:</dt><dd>${escapeHtml(filesForDataset[0]?.size || "n/a")}</dd></div>
         <div><dt>Number of rows:</dt><dd>${formatNumber(rowCount)}</dd></div>
-        <div><dt>Total file size:</dt><dd>${escapeHtml(dataset.files.map((file) => file.size).filter(Boolean).join(" + ") || "n/a")}</dd></div>
+        <div><dt>Total file size:</dt><dd>${escapeHtml(filesForDataset.map((file) => file.size).filter(Boolean).join(" + ") || "n/a")}</dd></div>
       </dl>
       <section class="hf-side-section" id="files-and-versions">
         <h3>Files and versions</h3>
@@ -1172,7 +1350,7 @@ function renderHfDataStudio(model, dataset) {
   const rowCount = Math.max(dataset.rowCount, dataset.rows.length, 1);
   const splitPills = dataset.subsets.flatMap((subset) => dataset.splits.map((split, index) => [
     `${subset}/${split}`,
-    formatNumber(index === 0 ? rowCount : Math.max(1, Math.round(rowCount * 0.1))),
+    formatNumber(rowCountForSplit(dataset, split, index === 0 ? rowCount : Math.max(1, Math.round(rowCount * 0.1)), subset)),
   ]));
   const body = `${renderHfCompactHeader(dataset, "studio")}
   <section class="data-studio-layout" data-studio="${escapeHtml(dataset.slug)}">
@@ -1216,7 +1394,8 @@ function renderHfDataStudio(model, dataset) {
 
 function renderKaggle(model, dataset, activeTab = "data-card") {
   const rowCount = Math.max(dataset.rowCount, dataset.rows.length, 1);
-  const firstFile = dataset.files.find((file) => !file.downloadUrl) || dataset.files[0];
+  const filesForDataset = datasetFiles(dataset);
+  const firstFile = primaryDatasetFile(dataset);
   const downloadHref = firstFile ? fileHref(dataset, firstFile) : "/manifest.json";
   const download = firstFile?.downloadUrl ? "" : " download";
   const tags = (dataset.tags.length ? dataset.tags : [dataset.task, dataset.language, "Mock dataset"])
@@ -1227,23 +1406,32 @@ function renderKaggle(model, dataset, activeTab = "data-card") {
     .slice(0, 5)
     .map((item) => `<a href="/kaggle/${item.slug}/"><span class="kg-thumb">${escapeHtml(item.title.slice(0, 1))}</span>${escapeHtml(item.title)}</a>`)
     .join("");
-  const fileRows = dataset.files
-    .map((file) => {
-      const href = fileHref(dataset, file);
-      const fileDownload = file.downloadUrl ? "" : " download";
-      const label = file.downloadUrl ? `Open ${file.storage || "storage"}` : "Download";
-      return `<li><span>${escapeHtml(file.path)}</span><strong>${escapeHtml(file.size || "")}</strong><a href="${escapeHtml(href)}"${fileDownload}>${escapeHtml(label)}</a></li>`;
+  const fileRows = datasetFileGroups(dataset)
+    .map((group) => {
+      return `<li class="kg-file-group"><strong>${escapeHtml(group.title)}</strong><ul>${group.files.map((groupFile) => {
+        const href = fileHref(dataset, groupFile);
+        const fileDownload = groupFile.downloadUrl ? "" : " download";
+        const label = groupFile.downloadUrl ? `Open ${groupFile.storage || "storage"}` : "Download";
+        const schema = fileSchemaSummary(groupFile);
+        return `<li><span>${escapeHtml(groupFile.path)}${schema ? ` <em>${escapeHtml(schema)}</em>` : ""}</span><strong>${escapeHtml(groupFile.size || "")}</strong><a href="${escapeHtml(href)}"${fileDownload}>${escapeHtml(label)}</a></li>`;
+      }).join("")}</ul></li>`;
     })
     .join("");
   const coverPath = coverImageOutputPath(dataset);
   const cover = coverPath
     ? `<figure class="kg-cover-image"><img src="/${escapeHtml(coverPath)}" alt="Dataset cover image"></figure>`
     : "";
-  const codeSnippet = `kaggle datasets download -d ${dataset.owner}/${dataset.slug}\npython - <<'PY'\nimport pandas as pd\nrows = pd.read_csv("data/train.csv")\nprint(rows.describe(include="all"))\nPY`;
+  const firstTabularPath = dataset.files.find((file) => /\.(csv|tsv)$/i.test(file.path) && !file.downloadUrl)?.path
+    || dataset.files.find((file) => /\.(csv|tsv)$/i.test(file.path))?.path
+    || filesForDataset.find((file) => /\.(csv|tsv)$/i.test(file.path) && !file.downloadUrl)?.path
+    || filesForDataset.find((file) => /\.(csv|tsv)$/i.test(file.path))?.path
+    || firstFile?.path
+    || "data/train.csv";
+  const codeSnippet = `kaggle datasets download -d ${dataset.owner}/${dataset.slug}\npython - <<'PY'\nimport pandas as pd\nrows = pd.read_csv("${firstTabularPath}")\nprint(rows.describe(include="all"))\nPY`;
   const tabContent = renderKaggleTabContent(dataset, activeTab, { rowCount, fileRows, tags, codeSnippet, cover });
   const stickyTabs = [
     ["data-card", "Data Card", `/kaggle/${dataset.slug}/`],
-    ["code", `Code (${dataset.files.length || 1})`, `/kaggle/${dataset.slug}/code/`],
+    ["code", `Code (${filesForDataset.length || 1})`, `/kaggle/${dataset.slug}/code/`],
     ["discussion", `Discussion (${dataset.discussions.length || 1})`, `/kaggle/${dataset.slug}/discussion/`],
     ["suggestions", "Suggestions (0)", `/kaggle/${dataset.slug}/suggestions/`],
   ].map(([key, label, href]) => `<a class="${activeTab === key ? "active" : ""}" href="${href}">${escapeHtml(label)}</a>`).join("");
@@ -1311,7 +1499,7 @@ function renderKaggle(model, dataset, activeTab = "data-card") {
       </section>
       <nav class="kg-tabs" aria-label="Dataset tabs">
         <a class="${activeTab === "data-card" ? "active" : ""}" href="/kaggle/${dataset.slug}/">Data Card</a>
-        <a class="${activeTab === "code" ? "active" : ""}" href="/kaggle/${dataset.slug}/code/">Code (${escapeHtml(String(dataset.files.length || 1))})</a>
+        <a class="${activeTab === "code" ? "active" : ""}" href="/kaggle/${dataset.slug}/code/">Code (${escapeHtml(String(filesForDataset.length || 1))})</a>
         <a class="${activeTab === "discussion" ? "active" : ""}" href="/kaggle/${dataset.slug}/discussion/">Discussion (${escapeHtml(String(dataset.discussions.length || 1))})</a>
         <a class="${activeTab === "suggestions" ? "active" : ""}" href="/kaggle/${dataset.slug}/suggestions/">Suggestions (0)</a>
       </nav>
@@ -1373,10 +1561,11 @@ function renderKaggleTabContent(dataset, activeTab, { rowCount, fileRows, tags, 
   ];
   const contact = dataset.contactName || "Maya Lintwell";
   const contactEmail = dataset.contactEmail || "reviewer@example.test";
+  const splitCountsSummary = splitSummary(dataset, rowCount);
   const metadataAccordions = [
     ["Collaborators", `<div class="kg-metadata-person"><span class="kg-avatar small">☺</span><strong>${escapeHtml(contact)} (Owner)</strong></div>`],
     ["Authors", `<p>${escapeHtml(contact)} maintains this mock release. <a href="mailto:${escapeHtml(contactEmail)}">${escapeHtml(contactEmail)}</a></p>`],
-    ["Coverage", `<p>${escapeHtml(formatNumber(rowCount))} invented rows across train, validation, and test splits with ${escapeHtml(String(dataset.columns.length))} schema columns.</p>`],
+    ["Coverage", `<p>${escapeHtml(formatNumber(rowCount))} invented rows across ${escapeHtml(splitCountsSummary || "configured splits")} with ${escapeHtml(String(dataset.columns.length))} schema columns.</p>`],
     ["DOI Citation", `<p>No real DOI. Cite this as a prerelease mock for <code>${escapeHtml(dataset.owner)}/${escapeHtml(dataset.slug)}</code>.</p>`],
     ["Provenance", "<p>Rows are synthetic fixtures generated for UI review. They do not describe a real dataset or real people.</p>"],
     ["License", `<p>${escapeHtml(dataset.license)}</p>`],
@@ -1471,6 +1660,10 @@ function renderKaggleTabContent(dataset, activeTab, { rowCount, fileRows, tags, 
     <section class="kg-explorer-span">
       ${kaggleDataExplorer(dataset, rowCount)}
     </section>
+    ${dataset.artifactGroups?.length ? `<section class="kg-file-surface">
+      <h2>Data files</h2>
+      <ul>${fileRows}</ul>
+    </section>` : ""}
     <section class="kg-social-proof">
       <div class="kg-social-heading"><span class="kg-social-icon" aria-hidden="true"></span><h2>See what others are saying about this dataset</h2></div>
       <div class="kg-survey-stack">
@@ -1520,6 +1713,11 @@ body{background:#fff;color:#111827}.mock-ribbon{background:#111827;color:#fff;pa
 function homePageStyles() {
   return `
 body:has(.home-shell){background:#f7f8fb}.home-shell{width:min(1280px,100%);margin:0 auto;padding:72px 56px 64px}.home-hero{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:28px 36px;padding:0 0 42px}.home-copy{max-width:880px}.home-hero .eyebrow{font-size:13px;letter-spacing:.1em;color:#667085;margin:0 0 16px}.home-hero h1{font-size:48px;line-height:1.04;margin:0 0 18px;color:#111827;font-weight:850}.home-hero p{max-width:760px;margin:0;color:#536073;font-size:18px;line-height:1.55}.home-summary{border:1px solid #d8dee8;border-radius:8px;background:#fff;padding:22px;align-self:start;box-shadow:0 12px 32px rgba(15,23,42,.07)}.home-summary strong{display:block;font-size:42px;line-height:1;color:#111827}.home-summary span{display:block;margin-top:10px;font-size:17px;font-weight:800;color:#111827}.home-summary small{display:block;margin-top:10px;color:#667085;font-size:14px;line-height:1.45}.platform-actions{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin-top:10px}.platform-card{position:relative;min-height:190px;border:1px solid #d8dee8;border-radius:8px;background:#fff;padding:26px 28px;text-decoration:none;display:flex;flex-direction:column;gap:14px;box-shadow:0 10px 26px rgba(15,23,42,.06);transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease}.platform-card:hover{transform:translateY(-2px);box-shadow:0 16px 34px rgba(15,23,42,.1);border-color:#c8d0dc}.platform-card:after{content:"Open";position:absolute;right:24px;bottom:22px;border:1px solid #d8dee8;border-radius:999px;padding:7px 13px;color:#111827;font-size:14px;font-weight:800;background:#fff}.platform-card strong{font-size:25px;line-height:1.18;color:#111827;max-width:620px}.platform-card span:last-child{max-width:620px;color:#667085;line-height:1.48;font-size:16px}.platform-logo{font-size:16px;font-weight:900;color:#111827}.hf-card{border-top:5px solid var(--hf)}.kaggle-card{border-top:5px solid var(--kg)}.dataset-list{border-top:1px solid #d8dee8;padding-top:34px;margin-top:8px}.dataset-list h2{font-size:26px;margin:0 0 16px;color:#111827}.dataset-list ul{list-style:none;padding:0;margin:0;display:grid;gap:10px}.dataset-list li{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:16px;background:#fff;border:1px solid #d8dee8;border-radius:8px;padding:16px 18px;box-shadow:0 6px 18px rgba(15,23,42,.04)}.dataset-list li>div{min-width:0;display:grid;gap:5px}.dataset-list li>div>a{font-size:17px;font-weight:800;text-decoration:none;color:#111827;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.dataset-list li>div>a:hover{text-decoration:underline}.dataset-list li>div>span{font-size:14px;color:#667085}.dataset-list nav{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}.dataset-list nav a{border:1px solid #d8dee8;border-radius:999px;background:#fff;padding:8px 12px;text-decoration:none;color:#374151;font-size:14px;font-weight:750}.dataset-list nav a:hover{border-color:#aab3c2;background:#f8fafc}footer{width:min(1280px,100%);max-width:none;margin:0 auto;padding:24px 56px;color:#667085}@media(max-width:900px){.home-shell{padding:40px 22px 52px}.home-hero{grid-template-columns:1fr}.home-hero h1{font-size:34px}.home-hero p{font-size:16px}.home-summary{max-width:420px}.platform-actions{grid-template-columns:1fr}.platform-card{min-height:0;padding:22px}.dataset-list li{grid-template-columns:1fr;align-items:start}.dataset-list nav{justify-content:flex-start}footer{padding:22px}}`;
+}
+
+function relationalArtifactStyles() {
+  return `
+.hf-file-group{display:block!important;padding:0!important;border:0!important}.hf-file-group>b{display:block;margin:4px 0 8px;color:#1f2937;font-size:14px}.hf-file-group>ul{list-style:none;margin:0;padding:0;display:grid;gap:8px}.repo-file-group{border-top:1px solid #e5e7eb}.repo-file-group:first-of-type{border-top:0}.repo-file-group-heading{min-height:52px;display:flex;align-items:center;gap:12px;padding:0 18px;background:#fbfcfe}.repo-file-group-heading strong{font-size:15px}.repo-file-group-heading span{color:#687386;font-size:13px}.kg-file-surface{grid-column:1/-1;border-top:1px solid #dadce0;padding-top:36px}.kg-file-surface h2{font-size:24px;margin:0 0 16px}.kg-file-surface ul{list-style:none;margin:0;padding:0;display:grid;gap:10px}.kg-file-surface li{border:1px solid #dadce0;border-radius:8px;padding:12px;display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px 14px;align-items:center}.kg-file-surface li span{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-weight:700;overflow:hidden;text-overflow:ellipsis}.kg-file-surface li em{font-family:Inter,ui-sans-serif,system-ui;color:#5f6368;font-style:normal;font-weight:500}.kg-file-surface li strong,.kg-file-surface li a{font-size:14px;color:#5f6368}.kg-file-surface .kg-file-group{display:block;border:0;padding:0}.kg-file-surface .kg-file-group>strong{display:block;margin:10px 0 8px;font-size:16px;color:#202124}.kg-file-surface .kg-file-group>ul{display:grid;gap:8px}`;
 }
 
 function kaggleSpecificStyles() {
@@ -1599,7 +1797,7 @@ export async function generateSite(config, options = {}) {
   await rm(outDir, { recursive: true, force: true });
   await mkdir(outDir, { recursive: true });
   await write(outDir, "index.html", renderHome(model), files);
-  await write(outDir, "assets/styles.css", styles() + hfSpecificStyles() + kaggleSpecificStyles() + kaggleAlignmentStyles() + kaggleTabStyles() + kaggleExplorerStyles() + kaggleFidelityStyles() + kagglePrecisionStyles() + kaggleMeasuredFontCalibrationStyles() + homePageStyles(), files);
+  await write(outDir, "assets/styles.css", styles() + hfSpecificStyles() + kaggleSpecificStyles() + kaggleAlignmentStyles() + kaggleTabStyles() + kaggleExplorerStyles() + kaggleFidelityStyles() + kagglePrecisionStyles() + kaggleMeasuredFontCalibrationStyles() + homePageStyles() + relationalArtifactStyles(), files);
   await write(outDir, "manifest.json", JSON.stringify({ ...manifestModel, mockNotice: MOCK_NOTICE }, null, 2), files);
   for (const dataset of model.datasets) {
     await write(outDir, `hf/${dataset.slug}/index.html`, renderHf(model, dataset), files);
@@ -1610,7 +1808,7 @@ export async function generateSite(config, options = {}) {
     await write(outDir, `kaggle/${dataset.slug}/code/index.html`, renderKaggle(model, dataset, "code"), files);
     await write(outDir, `kaggle/${dataset.slug}/discussion/index.html`, renderKaggle(model, dataset, "discussion"), files);
     await write(outDir, `kaggle/${dataset.slug}/suggestions/index.html`, renderKaggle(model, dataset, "suggestions"), files);
-    for (const file of dataset.files) {
+    for (const file of datasetFiles(dataset)) {
       await copyDownload(outDir, dataset, file, options, files);
     }
     await copyCoverImage(outDir, dataset, options, files);

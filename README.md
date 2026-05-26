@@ -101,7 +101,7 @@ For repeatable downstream builds, pin the GitHub release tag:
 ```json
 {
   "dependencies": {
-    "@shmuggingface/core": "github:ShmuggingFace/ShmuggingFaceCore#v1.0.1"
+    "@shmuggingface/core": "github:ShmuggingFace/ShmuggingFaceCore#v1.0.2"
   }
 }
 ```

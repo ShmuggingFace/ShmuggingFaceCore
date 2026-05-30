@@ -1,10 +1,16 @@
 # ShmuggingFaceCore
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Node 20+](https://img.shields.io/badge/node-20%2B-339933)](package.json)
+[![Package](https://img.shields.io/badge/package-%40shmuggingface%2Fcore-2563eb)](package.json)
+
 ShmuggingFaceCore generates review-ready static minisites that mock dataset
 release pages before a real Hugging Face or Kaggle publication. The goal is to
 make pre-release review links feel realistic enough to catch copy, metadata,
 preview, file, and download problems while making it unmistakable that reviewers
 are looking at a mock.
+
+Created by [Shay Palachy Affek](http://www.shaypalachy.com/).
 
 The generated app has:
 
@@ -19,6 +25,17 @@ Every generated page includes a prominent mock notice:
 
 > This is a ShmuggingFace review mock. It is not Hugging Face, Kaggle, or a real
 > dataset release.
+
+## Generated Page Preview
+
+The demo generator renders both review surfaces from the same dataset config:
+
+| ShmuggingFace dataset page | Shmaggle dataset page |
+|---|---|
+| ![ShmuggingFace-style dataset page preview](docs/assets/shmuggingface-hf-preview.png) | ![Shmaggle-style dataset page preview](docs/assets/shmuggingface-kaggle-preview.png) |
+
+These previews are generated from `examples/silly-datasets/` and intentionally
+keep the mock brand, mock notice, and non-production cues visible.
 
 ## Quick Start
 
@@ -363,7 +380,22 @@ ShmuggingFaceCore is for review mocks, not impersonation. Generated sites should
 be accurate enough for release review but must keep the mock brand, mock notice,
 and non-production URLs visible.
 
+## Contributing
+
+Keep changes focused on review reliability: static output must remain
+no-secrets, generated pages must preserve clear mock branding, and new config
+fields should be documented in this README with tests for generated HTML or
+manifest behavior. Run the full check before opening a PR:
+
+```sh
+npm run check
+```
+
 ## Planning
 
 - [Review synthesis](docs/shmuggingface_review_synthesis.md)
 - [Next 10 review PRs](docs/next_10_review_prs.md)
+
+## Credits
+
+Created by [Shay Palachy Affek ](http://www.shaypalachy.com/) [[GitHub](https://github.com/shaypal5)]

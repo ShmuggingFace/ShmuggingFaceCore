@@ -42,7 +42,7 @@ keep the mock brand, mock notice, and non-production cues visible.
 Reference consumer demo:
 [`ShmuggingFace/silly-dataset-release-demo`](https://github.com/ShmuggingFace/silly-dataset-release-demo)
 deploys to
-<https://shmuggingface-silly-dataset-demo.pages.dev/>.
+<https://shmuggingface-silly-dataset-demo-3rq.pages.dev/>.
 
 Create `shmuggingface.config.mjs` in a dataset-producing project:
 
